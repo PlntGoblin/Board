@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
-import { Send, Loader2, Trash2, Move, Square, StickyNote, Box } from 'lucide-react';
+import { Send, Loader2, Trash2, MousePointer, Pen, StickyNote, Type, Square, Circle, ArrowRight, Minus } from 'lucide-react';
 
 const AIBoard = () => {
   const [boardObjects, setBoardObjects] = useState([]);
@@ -14,7 +14,12 @@ const AIBoard = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [conversationHistory, setConversationHistory] = useState([]);
   const [aiResponse, setAiResponse] = useState('');
-  
+  const [activeTool, setActiveTool] = useState('select');
+  const [isResizing, setIsResizing] = useState(false);
+  const [resizeHandle, setResizeHandle] = useState(null);
+  const [editingId, setEditingId] = useState(null);
+  const [editingText, setEditingText] = useState('');
+
   const canvasRef = useRef(null);
   const nextId = useRef(1);
 
@@ -410,11 +415,26 @@ const AIBoard = () => {
       });
       return;
     }
-    
+
+    if (isResizing && selectedId) {
+      const mouseX = (e.clientX - viewportOffset.x) / zoom;
+      const mouseY = (e.clientY - viewportOffset.y) / zoom;
+
+      setBoardObjects(prev => prev.map(obj => {
+        if (obj.id === selectedId) {
+          const newWidth = Math.max(50, mouseX - obj.x);
+          const newHeight = Math.max(50, mouseY - obj.y);
+          return { ...obj, width: newWidth, height: newHeight };
+        }
+        return obj;
+      }));
+      return;
+    }
+
     if (draggedId) {
       const newX = (e.clientX - viewportOffset.x) / zoom - dragOffset.x;
       const newY = (e.clientY - viewportOffset.y) / zoom - dragOffset.y;
-      
+
       setBoardObjects(prev => prev.map(obj =>
         obj.id === draggedId ? { ...obj, x: newX, y: newY } : obj
       ));
@@ -424,12 +444,97 @@ const AIBoard = () => {
   const handleMouseUp = () => {
     setDraggedId(null);
     setIsPanning(false);
+    setIsResizing(false);
+    setResizeHandle(null);
   };
 
   const handleWheel = (e) => {
     e.preventDefault();
     const delta = e.deltaY > 0 ? 0.9 : 1.1;
     setZoom(prev => Math.min(Math.max(prev * delta, 0.1), 3));
+  };
+
+  // Delete selected object
+  const handleDelete = useCallback(() => {
+    if (selectedId) {
+      setBoardObjects(prev => prev.filter(obj => obj.id !== selectedId));
+      setSelectedId(null);
+    }
+  }, [selectedId]);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedId) {
+        e.preventDefault();
+        handleDelete();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedId, handleDelete]);
+
+  // Tool handlers
+  const handleCanvasClick = (e) => {
+    if (activeTool === 'select' || draggedId || isPanning) return;
+
+    const rect = canvasRef.current.getBoundingClientRect();
+    const x = (e.clientX - rect.left - viewportOffset.x) / zoom;
+    const y = (e.clientY - rect.top - viewportOffset.y) / zoom;
+
+    if (activeTool === 'sticky') {
+      const newNote = {
+        id: nextId.current++,
+        type: 'stickyNote',
+        x,
+        y,
+        width: 200,
+        height: 200,
+        color: 'yellow',
+        text: 'New note...'
+      };
+      setBoardObjects(prev => [...prev, newNote]);
+      setActiveTool('select');
+    } else if (activeTool === 'text') {
+      const newText = {
+        id: nextId.current++,
+        type: 'text',
+        x,
+        y,
+        width: 200,
+        height: 50,
+        text: 'Type here...'
+      };
+      setBoardObjects(prev => [...prev, newText]);
+      setActiveTool('select');
+    } else if (activeTool === 'rectangle') {
+      const newShape = {
+        id: nextId.current++,
+        type: 'shape',
+        shapeType: 'rectangle',
+        x,
+        y,
+        width: 150,
+        height: 100,
+        color: '#81D4FA'
+      };
+      setBoardObjects(prev => [...prev, newShape]);
+      setActiveTool('select');
+    } else if (activeTool === 'circle') {
+      const newShape = {
+        id: nextId.current++,
+        type: 'shape',
+        shapeType: 'circle',
+        x,
+        y,
+        width: 120,
+        height: 120,
+        color: '#A5D6A7'
+      };
+      setBoardObjects(prev => [...prev, newShape]);
+      setActiveTool('select');
+    }
   };
 
   // Color mapping
@@ -440,7 +545,8 @@ const AIBoard = () => {
       blue: '#81D4FA',
       green: '#A5D6A7',
       purple: '#CE93D8',
-      orange: '#FFAB91'
+      orange: '#FFAB91',
+      white: '#FFFFFF'
     };
     return colors[color] || color;
   };
@@ -448,12 +554,20 @@ const AIBoard = () => {
   // Render board object
   const renderObject = (obj) => {
     const isSelected = obj.id === selectedId;
-    
+    const isEditing = obj.id === editingId;
+
     if (obj.type === 'stickyNote') {
       return (
         <div
           key={obj.id}
-          onMouseDown={(e) => handleMouseDown(e, obj.id)}
+          onMouseDown={(e) => {
+            if (!isEditing) handleMouseDown(e, obj.id);
+          }}
+          onDoubleClick={(e) => {
+            e.stopPropagation();
+            setEditingId(obj.id);
+            setEditingText(obj.text);
+          }}
           style={{
             position: 'absolute',
             left: obj.x,
@@ -464,14 +578,44 @@ const AIBoard = () => {
             border: isSelected ? '3px solid #2196F3' : '2px solid rgba(0,0,0,0.1)',
             borderRadius: '4px',
             padding: '16px',
-            cursor: 'move',
+            cursor: isEditing ? 'text' : 'move',
             boxShadow: '0 4px 8px rgba(0,0,0,0.1)',
             fontSize: '14px',
             overflow: 'auto',
-            userSelect: 'none'
+            userSelect: isEditing ? 'text' : 'none'
           }}
         >
-          {obj.text}
+          {isEditing ? (
+            <textarea
+              autoFocus
+              value={editingText}
+              onChange={(e) => setEditingText(e.target.value)}
+              onBlur={() => {
+                setBoardObjects(prev => prev.map(o =>
+                  o.id === obj.id ? { ...o, text: editingText } : o
+                ));
+                setEditingId(null);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') {
+                  setEditingId(null);
+                }
+              }}
+              style={{
+                width: '100%',
+                height: '100%',
+                border: 'none',
+                outline: 'none',
+                background: 'transparent',
+                fontSize: '14px',
+                fontFamily: 'inherit',
+                resize: 'none',
+                color: 'inherit'
+              }}
+            />
+          ) : (
+            obj.text
+          )}
         </div>
       );
     }
@@ -480,19 +624,109 @@ const AIBoard = () => {
       return (
         <div
           key={obj.id}
-          onMouseDown={(e) => handleMouseDown(e, obj.id)}
           style={{
             position: 'absolute',
             left: obj.x,
             top: obj.y,
             width: obj.width,
-            height: obj.height,
-            backgroundColor: getColor(obj.color),
-            border: isSelected ? '3px solid #2196F3' : '2px solid rgba(0,0,0,0.3)',
-            borderRadius: obj.shapeType === 'circle' ? '50%' : '4px',
-            cursor: 'move'
+            height: obj.height
           }}
-        />
+        >
+          <div
+            onMouseDown={(e) => handleMouseDown(e, obj.id)}
+            style={{
+              width: '100%',
+              height: '100%',
+              backgroundColor: getColor(obj.color),
+              border: isSelected ? '3px solid #2196F3' : '2px solid rgba(0,0,0,0.3)',
+              borderRadius: obj.shapeType === 'circle' ? '50%' : '4px',
+              cursor: 'move'
+            }}
+          />
+          {isSelected && (
+            <div
+              onMouseDown={(e) => {
+                e.stopPropagation();
+                setIsResizing(true);
+                setResizeHandle('se');
+              }}
+              style={{
+                position: 'absolute',
+                bottom: -4,
+                right: -4,
+                width: '12px',
+                height: '12px',
+                background: '#2196F3',
+                border: '2px solid white',
+                borderRadius: '50%',
+                cursor: 'nwse-resize',
+                zIndex: 1000
+              }}
+            />
+          )}
+        </div>
+      );
+    }
+
+    if (obj.type === 'text') {
+      return (
+        <div
+          key={obj.id}
+          onMouseDown={(e) => {
+            if (!isEditing) handleMouseDown(e, obj.id);
+          }}
+          onDoubleClick={(e) => {
+            e.stopPropagation();
+            setEditingId(obj.id);
+            setEditingText(obj.text);
+          }}
+          style={{
+            position: 'absolute',
+            left: obj.x,
+            top: obj.y,
+            minWidth: obj.width || 100,
+            padding: '8px',
+            border: isSelected ? '2px solid #2196F3' : '2px solid transparent',
+            borderRadius: '4px',
+            cursor: isEditing ? 'text' : 'move',
+            fontSize: '16px',
+            fontFamily: 'system-ui, sans-serif',
+            color: '#333',
+            userSelect: isEditing ? 'text' : 'none',
+            whiteSpace: 'pre-wrap'
+          }}
+        >
+          {isEditing ? (
+            <input
+              autoFocus
+              type="text"
+              value={editingText}
+              onChange={(e) => setEditingText(e.target.value)}
+              onBlur={() => {
+                setBoardObjects(prev => prev.map(o =>
+                  o.id === obj.id ? { ...o, text: editingText } : o
+                ));
+                setEditingId(null);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === 'Escape') {
+                  e.target.blur();
+                }
+              }}
+              style={{
+                width: '100%',
+                border: 'none',
+                outline: 'none',
+                background: 'transparent',
+                fontSize: '16px',
+                fontFamily: 'system-ui, sans-serif',
+                color: '#333'
+              }}
+            />
+          ) : (
+            obj.text
+          )}
+        </div>
       );
     }
     
@@ -610,23 +844,125 @@ const AIBoard = () => {
       </div>
 
       {/* Canvas */}
-      <div
-        ref={canvasRef}
-        onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseUp}
-        onWheel={handleWheel}
-        style={{
-          flex: 1,
-          position: 'relative',
-          overflow: 'hidden',
-          cursor: isPanning ? 'grabbing' : draggedId ? 'grabbing' : 'default',
-          background: 'linear-gradient(#e8e8e8 1px, transparent 1px), linear-gradient(90deg, #e8e8e8 1px, transparent 1px)',
-          backgroundSize: `${20 * zoom}px ${20 * zoom}px`,
-          backgroundPosition: `${viewportOffset.x}px ${viewportOffset.y}px`
-        }}
-      >
+      <div style={{ flex: 1, position: 'relative' }}>
+        {/* Left Toolbar - Floating */}
+        <div style={{
+          position: 'absolute',
+          left: '16px',
+          top: '16px',
+          background: 'white',
+          borderRadius: '12px',
+          boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+          display: 'flex',
+          flexDirection: 'column',
+          padding: '8px',
+          gap: '4px',
+          alignItems: 'center',
+          zIndex: 10
+        }}>
+          {[
+            { id: 'select', icon: MousePointer, label: 'Select' },
+            { id: 'pen', icon: Pen, label: 'Draw' },
+            { id: 'sticky', icon: StickyNote, label: 'Sticky Note' },
+            { id: 'text', icon: Type, label: 'Text' },
+            { id: 'rectangle', icon: Square, label: 'Rectangle' },
+            { id: 'circle', icon: Circle, label: 'Circle' },
+            { id: 'arrow', icon: ArrowRight, label: 'Arrow' },
+            { id: 'line', icon: Minus, label: 'Line' }
+          ].map(tool => {
+            const Icon = tool.icon;
+            const isActive = activeTool === tool.id;
+            return (
+              <button
+                key={tool.id}
+                onClick={() => setActiveTool(tool.id)}
+                title={tool.label}
+                style={{
+                  width: '44px',
+                  height: '44px',
+                  border: 'none',
+                  borderRadius: '8px',
+                  background: isActive ? '#2196F3' : 'transparent',
+                  color: isActive ? 'white' : '#666',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  transition: 'all 0.2s',
+                  position: 'relative'
+                }}
+                onMouseEnter={(e) => {
+                  if (!isActive) e.currentTarget.style.background = '#f5f5f5';
+                }}
+                onMouseLeave={(e) => {
+                  if (!isActive) e.currentTarget.style.background = 'transparent';
+                }}
+              >
+                <Icon size={20} />
+              </button>
+            );
+          })}
+
+          {/* Delete button - shows when object is selected */}
+          {selectedId && (
+            <>
+              <div style={{
+                width: '100%',
+                height: '1px',
+                background: '#e0e0e0',
+                margin: '8px 0'
+              }} />
+              <button
+                onClick={handleDelete}
+                title="Delete (Del)"
+                style={{
+                  width: '44px',
+                  height: '44px',
+                  border: 'none',
+                  borderRadius: '8px',
+                  background: '#f44336',
+                  color: 'white',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  transition: 'all 0.2s'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = '#d32f2f';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = '#f44336';
+                }}
+              >
+                <Trash2 size={20} />
+              </button>
+            </>
+          )}
+        </div>
+
+        {/* Main Canvas */}
+        <div
+          ref={canvasRef}
+          onMouseDown={handleMouseDown}
+          onClick={handleCanvasClick}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
+          onMouseLeave={handleMouseUp}
+          onWheel={handleWheel}
+          style={{
+            width: '100%',
+            height: '100%',
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            overflow: 'hidden',
+            cursor: isPanning ? 'grabbing' : draggedId ? 'grabbing' : activeTool === 'select' ? 'default' : 'crosshair',
+            background: 'linear-gradient(#e8e8e8 1px, transparent 1px), linear-gradient(90deg, #e8e8e8 1px, transparent 1px)',
+            backgroundSize: `${20 * zoom}px ${20 * zoom}px`,
+            backgroundPosition: `${viewportOffset.x}px ${viewportOffset.y}px`
+          }}
+        >
         <div style={{
           transform: `translate(${viewportOffset.x}px, ${viewportOffset.y}px) scale(${zoom})`,
           transformOrigin: '0 0',
@@ -636,9 +972,10 @@ const AIBoard = () => {
         }}>
           {boardObjects.map(renderObject)}
         </div>
+        </div>
       </div>
 
-      {/* Toolbar */}
+      {/* Bottom Toolbar */}
       <div style={{
         padding: '12px 16px',
         background: 'white',
