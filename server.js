@@ -43,7 +43,7 @@ app.post('/api/boards', authenticate, async (req, res) => {
   const { title } = req.body;
   const { data, error } = await supabase
     .from('boards')
-    .insert({ owner_id: req.user.id, title: title || 'Untitled Board' })
+    .insert({ owner_id: req.user.id, title: title || 'Untitled Board', is_public: true })
     .select()
     .single();
 
@@ -89,7 +89,7 @@ app.get('/api/boards/:id', authenticate, async (req, res) => {
   // Check access: owner, collaborator, or public
   const isOwner = data.owner_id === req.user.id;
 
-  if (!isOwner && !data.is_public) {
+  if (!isOwner) {
     const { data: collab } = await supabase
       .from('board_collaborators')
       .select('role')
@@ -98,7 +98,18 @@ app.get('/api/boards/:id', authenticate, async (req, res) => {
       .single();
 
     if (!collab) {
-      return res.status(403).json({ error: 'Access denied' });
+      if (!data.is_public) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+
+      // Auto-add visitor as collaborator on public boards
+      await supabase
+        .from('board_collaborators')
+        .upsert({
+          board_id: req.params.id,
+          user_id: req.user.id,
+          role: 'editor',
+        });
     }
   }
 

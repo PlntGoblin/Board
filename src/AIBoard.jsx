@@ -37,6 +37,7 @@ const AIBoard = () => {
   const [editingText, setEditingText] = useState('');
   const [boardTitle, setBoardTitle] = useState('Untitled Board');
   const [showShareModal, setShowShareModal] = useState(false);
+  const [isBoardPublic, setIsBoardPublic] = useState(true);
   const [boardLoaded, setBoardLoaded] = useState(false);
   const [showAIChat, setShowAIChat] = useState(false);
   const [isWizardHovered, setIsWizardHovered] = useState(false);
@@ -243,6 +244,7 @@ const AIBoard = () => {
       try {
         const board = await loadBoard(boardId);
         setBoardTitle(board.title || 'Untitled Board');
+        setIsBoardPublic(board.is_public !== false);
         if (board.board_data) {
           const data = typeof board.board_data === 'string'
             ? JSON.parse(board.board_data)
@@ -1790,6 +1792,7 @@ const AIBoard = () => {
       {showShareModal && (
         <ShareModal
           boardId={boardId}
+          isPublic={isBoardPublic}
           onClose={() => setShowShareModal(false)}
         />
       )}

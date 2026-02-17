@@ -2,10 +2,10 @@ import { useState } from 'react';
 import { X, Copy, Check, Globe, Lock, UserPlus } from 'lucide-react';
 import { useBoard } from '../hooks/useBoard';
 
-export default function ShareModal({ boardId, onClose }) {
+export default function ShareModal({ boardId, isPublic: initialPublic = true, onClose }) {
   const { shareBoard, toggleVisibility } = useBoard();
   const [email, setEmail] = useState('');
-  const [isPublic, setIsPublic] = useState(false);
+  const [isPublic, setIsPublic] = useState(initialPublic);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');

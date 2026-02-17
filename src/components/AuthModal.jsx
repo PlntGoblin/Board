@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Eye, EyeOff, ArrowRight } from 'lucide-react';
+import { Eye, EyeOff, ArrowRight, Mail } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 
 export default function AuthModal() {
@@ -10,6 +10,7 @@ export default function AuthModal() {
   const [loading, setLoading] = useState(false);
   const [showPasswordText, setShowPasswordText] = useState(false);
   const [isSignUp, setIsSignUp] = useState(false);
+  const [confirmationSent, setConfirmationSent] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -19,6 +20,7 @@ export default function AuthModal() {
       localStorage.setItem('keepLoggedIn', 'true');
       if (isSignUp) {
         await signUp(email, password);
+        setConfirmationSent(true);
       } else {
         await signIn(email, password);
       }
@@ -136,7 +138,42 @@ export default function AuthModal() {
           padding: '32px',
           backdropFilter: 'blur(20px)',
         }}>
-          {/* Form */}
+          {confirmationSent ? (
+            <div style={{ textAlign: 'center' }}>
+              <div style={{
+                width: '48px', height: '48px', borderRadius: '50%',
+                background: 'rgba(56,189,248,0.1)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                margin: '0 auto 16px',
+              }}>
+                <Mail size={22} color="#38bdf8" />
+              </div>
+              <h3 style={{ margin: '0 0 8px', fontSize: '16px', fontWeight: '600', color: '#f0f0f5' }}>
+                Check your email
+              </h3>
+              <p style={{ margin: '0 0 20px', fontSize: '14px', color: '#64748b', lineHeight: '1.5' }}>
+                We sent a confirmation link to<br />
+                <span style={{ color: '#38bdf8' }}>{email}</span>
+              </p>
+              <button
+                onClick={() => { setConfirmationSent(false); setIsSignUp(false); setError(''); }}
+                style={{
+                  padding: '10px 20px',
+                  background: 'rgba(255,255,255,0.06)',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  borderRadius: '8px',
+                  color: '#f0f0f5',
+                  fontSize: '13px',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}
+                onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.06)'}
+              >
+                Back to sign in
+              </button>
+            </div>
+          ) : (
           <form onSubmit={handleSubmit}>
             <div style={{ marginBottom: '14px' }}>
               <input
@@ -271,6 +308,7 @@ export default function AuthModal() {
               )}
             </button>
           </form>
+          )}
         </div>
 
         {/* Toggle sign in / sign up */}
