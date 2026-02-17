@@ -1,9 +1,11 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 
 export function usePresence(boardId, user) {
   const [onlineUsers, setOnlineUsers] = useState([]);
-  const [channel, setChannel] = useState(null);
+  const channelRef = useRef(null);
+  const lastCursorUpdate = useRef(0);
+  const pendingCursorUpdate = useRef(null);
 
   useEffect(() => {
     if (!boardId || !user) return;
@@ -18,6 +20,7 @@ export function usePresence(boardId, user) {
       })
       .subscribe(async (status) => {
         if (status === 'SUBSCRIBED') {
+          channelRef.current = presenceChannel;
           await presenceChannel.track({
             user_id: user.id,
             email: user.email,
@@ -28,15 +31,22 @@ export function usePresence(boardId, user) {
         }
       });
 
-    setChannel(presenceChannel);
-
     return () => {
+      channelRef.current = null;
+      clearTimeout(pendingCursorUpdate.current);
       supabase.removeChannel(presenceChannel);
     };
   }, [boardId, user]);
 
   const updateCursor = useCallback((x, y) => {
-    if (channel && user) {
+    const channel = channelRef.current;
+    if (!channel || !user) return;
+
+    const now = Date.now();
+    const elapsed = now - lastCursorUpdate.current;
+
+    if (elapsed >= 50) {
+      lastCursorUpdate.current = now;
       channel.track({
         user_id: user.id,
         email: user.email,
@@ -44,8 +54,20 @@ export function usePresence(boardId, user) {
         online_at: new Date().toISOString(),
         cursor: { x, y },
       });
+    } else {
+      clearTimeout(pendingCursorUpdate.current);
+      pendingCursorUpdate.current = setTimeout(() => {
+        lastCursorUpdate.current = Date.now();
+        channel.track({
+          user_id: user.id,
+          email: user.email,
+          display_name: user.user_metadata?.display_name || user.email?.split('@')[0] || 'User',
+          online_at: new Date().toISOString(),
+          cursor: { x, y },
+        });
+      }, 50 - elapsed);
     }
-  }, [channel, user]);
+  }, [user]);
 
   return { onlineUsers, updateCursor };
 }

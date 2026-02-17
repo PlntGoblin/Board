@@ -2,55 +2,55 @@ import { useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 
 export function useBoardSync(boardId, boardObjects, setBoardObjects, user) {
+  const channelRef = useRef(null);
   const ignoreNextUpdate = useRef(false);
-  const lastUpdateTime = useRef(Date.now());
 
+  // Subscribe to the channel once per board/user
   useEffect(() => {
     if (!boardId || !user) return;
 
     const channel = supabase.channel(`board-sync:${boardId}`);
 
-    // Listen for board updates from other users
     channel
       .on('broadcast', { event: 'board-update' }, (payload) => {
-        // Don't apply our own updates
         if (payload.payload.user_id === user.id) return;
-
-        // Don't apply if we just sent an update (debounce)
-        if (Date.now() - lastUpdateTime.current < 100) return;
-
         ignoreNextUpdate.current = true;
         setBoardObjects(payload.payload.objects);
       })
-      .subscribe();
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          channelRef.current = channel;
+        }
+      });
 
     return () => {
+      channelRef.current = null;
       supabase.removeChannel(channel);
     };
   }, [boardId, user, setBoardObjects]);
 
-  // Broadcast board changes to other users
+  // Broadcast local changes to other users
   useEffect(() => {
     if (!boardId || !user) return;
+
     if (ignoreNextUpdate.current) {
       ignoreNextUpdate.current = false;
       return;
     }
 
-    const channel = supabase.channel(`board-sync:${boardId}`);
-
     const timeoutId = setTimeout(() => {
-      channel.send({
-        type: 'broadcast',
-        event: 'board-update',
-        payload: {
-          objects: boardObjects,
-          user_id: user.id,
-          timestamp: Date.now(),
-        },
-      });
-      lastUpdateTime.current = Date.now();
-    }, 100); // Debounce broadcasts
+      if (channelRef.current) {
+        channelRef.current.send({
+          type: 'broadcast',
+          event: 'board-update',
+          payload: {
+            objects: boardObjects,
+            user_id: user.id,
+            timestamp: Date.now(),
+          },
+        });
+      }
+    }, 150);
 
     return () => clearTimeout(timeoutId);
   }, [boardObjects, boardId, user]);
