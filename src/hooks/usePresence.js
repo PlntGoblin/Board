@@ -12,12 +12,16 @@ export function usePresence(boardId, user) {
 
     const presenceChannel = supabase.channel(`board:${boardId}`);
 
+    const syncUsers = () => {
+      const state = presenceChannel.presenceState();
+      const users = Object.values(state).flat();
+      setOnlineUsers(users);
+    };
+
     presenceChannel
-      .on('presence', { event: 'sync' }, () => {
-        const state = presenceChannel.presenceState();
-        const users = Object.values(state).flat();
-        setOnlineUsers(users);
-      })
+      .on('presence', { event: 'sync' }, syncUsers)
+      .on('presence', { event: 'join' }, syncUsers)
+      .on('presence', { event: 'leave' }, syncUsers)
       .subscribe(async (status) => {
         if (status === 'SUBSCRIBED') {
           channelRef.current = presenceChannel;
