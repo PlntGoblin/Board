@@ -1,6 +1,6 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Send, Loader2, Trash2, MousePointer, Pen, StickyNote, Type, Square, Circle, ArrowRight, Minus, ArrowLeft, Share2, Cloud, CloudOff, Loader, ChevronsUp, ChevronUp, ChevronDown, ChevronsDown } from 'lucide-react';
+import { Send, Loader2, Trash2, MousePointer, Pen, StickyNote, Type, Square, Circle, ArrowRight, Minus, ArrowLeft, Share2, Cloud, CloudOff, Loader, ChevronsUp, ChevronUp, ChevronDown, ChevronsDown, Undo, Redo, Plus, Maximize2, Users } from 'lucide-react';
 import { useAuth } from './hooks/useAuth';
 import { useBoard } from './hooks/useBoard';
 import { useAutoSave } from './hooks/useAutoSave';
@@ -17,9 +17,6 @@ const AIBoard = () => {
   const { user, session } = useAuth();
   const { loadBoard, saveBoard } = useBoard();
   const { onlineUsers, updateCursor } = usePresence(boardId, user);
-
-  // Real-time board sync
-  useBoardSync(boardId, boardObjects, setBoardObjects, user);
 
   const [boardObjects, setBoardObjects] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
@@ -41,12 +38,58 @@ const AIBoard = () => {
   const [boardTitle, setBoardTitle] = useState('Untitled Board');
   const [showShareModal, setShowShareModal] = useState(false);
   const [boardLoaded, setBoardLoaded] = useState(false);
+  const [showAIChat, setShowAIChat] = useState(false);
+  const [isWizardHovered, setIsWizardHovered] = useState(false);
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [currentPath, setCurrentPath] = useState([]);
+  const [drawColor, setDrawColor] = useState('#000000');
+  const [lineStart, setLineStart] = useState(null);
+
+  const [history, setHistory] = useState([]);
+  const [historyIndex, setHistoryIndex] = useState(-1);
+  const isUndoRedo = useRef(false);
+  const [showZoomMenu, setShowZoomMenu] = useState(false);
 
   const canvasRef = useRef(null);
   const nextId = useRef(1);
 
+  // Real-time board sync
+  useBoardSync(boardId, boardObjects, setBoardObjects, user);
+
   // Auto-save
   const saveStatus = useAutoSave(boardId, boardObjects, nextId.current, boardLoaded ? saveBoard : null);
+
+  // Track history for undo/redo (only after board is loaded, skip during undo/redo)
+  useEffect(() => {
+    if (!boardLoaded) return;
+    if (isUndoRedo.current) {
+      isUndoRedo.current = false;
+      return;
+    }
+    setHistory(prev => {
+      const trimmed = prev.slice(0, historyIndex + 1);
+      return [...trimmed, boardObjects];
+    });
+    setHistoryIndex(prev => prev + 1);
+  }, [boardObjects]);
+
+  const handleUndo = useCallback(() => {
+    if (historyIndex <= 0) return;
+    isUndoRedo.current = true;
+    const newIndex = historyIndex - 1;
+    setHistoryIndex(newIndex);
+    setBoardObjects(history[newIndex]);
+    setSelectedId(null);
+  }, [history, historyIndex]);
+
+  const handleRedo = useCallback(() => {
+    if (historyIndex >= history.length - 1) return;
+    isUndoRedo.current = true;
+    const newIndex = historyIndex + 1;
+    setHistoryIndex(newIndex);
+    setBoardObjects(history[newIndex]);
+    setSelectedId(null);
+  }, [history, historyIndex]);
 
   // Load board data on mount
   useEffect(() => {
@@ -70,6 +113,10 @@ const AIBoard = () => {
     };
     load();
   }, [boardId]);
+
+  const zoomIn = useCallback(() => setZoom(prev => Math.min(+(prev * 1.25).toFixed(2), 3)), []);
+  const zoomOut = useCallback(() => setZoom(prev => Math.max(+(prev / 1.25).toFixed(2), 0.1)), []);
+  const fitToScreen = useCallback(() => { setZoom(1); setViewportOffset({ x: 0, y: 0 }); }, []);
 
   // Board manipulation tools for AI
   const boardTools = [
@@ -439,7 +486,7 @@ const AIBoard = () => {
       e.preventDefault();
       return;
     }
-    
+
     if (objId) {
       setDraggedId(objId);
       setSelectedId(objId);
@@ -453,6 +500,20 @@ const AIBoard = () => {
       e.stopPropagation();
     } else {
       setSelectedId(null);
+
+      // Handle drawing tools
+      const rect = canvasRef.current?.getBoundingClientRect();
+      if (rect && (activeTool === 'pen' || activeTool === 'arrow' || activeTool === 'line')) {
+        const x = (e.clientX - rect.left - viewportOffset.x) / zoom;
+        const y = (e.clientY - rect.top - viewportOffset.y) / zoom;
+
+        if (activeTool === 'pen') {
+          setIsDrawing(true);
+          setCurrentPath([{ x, y }]);
+        } else if (activeTool === 'arrow' || activeTool === 'line') {
+          setLineStart({ x, y });
+        }
+      }
     }
   };
 
@@ -470,6 +531,14 @@ const AIBoard = () => {
         x: e.clientX - panStart.x,
         y: e.clientY - panStart.y
       });
+      return;
+    }
+
+    // Handle pen drawing
+    if (isDrawing && activeTool === 'pen' && rect) {
+      const x = (e.clientX - rect.left - viewportOffset.x) / zoom;
+      const y = (e.clientY - rect.top - viewportOffset.y) / zoom;
+      setCurrentPath(prev => [...prev, { x, y }]);
       return;
     }
 
@@ -498,7 +567,45 @@ const AIBoard = () => {
     }
   };
 
-  const handleMouseUp = () => {
+  const handleMouseUp = (e) => {
+    // Finish pen drawing
+    if (isDrawing && activeTool === 'pen' && currentPath.length > 1) {
+      const newPath = {
+        id: nextId.current++,
+        type: 'path',
+        points: currentPath,
+        color: drawColor,
+        strokeWidth: 3
+      };
+      setBoardObjects(prev => [...prev, newPath]);
+      setIsDrawing(false);
+      setCurrentPath([]);
+      setActiveTool('select');
+    }
+
+    // Finish line or arrow
+    if (lineStart && (activeTool === 'line' || activeTool === 'arrow')) {
+      const rect = canvasRef.current?.getBoundingClientRect();
+      if (rect) {
+        const x = (e.clientX - rect.left - viewportOffset.x) / zoom;
+        const y = (e.clientY - rect.top - viewportOffset.y) / zoom;
+
+        const newLine = {
+          id: nextId.current++,
+          type: activeTool,
+          x1: lineStart.x,
+          y1: lineStart.y,
+          x2: x,
+          y2: y,
+          color: drawColor,
+          strokeWidth: 3
+        };
+        setBoardObjects(prev => [...prev, newLine]);
+        setLineStart(null);
+        setActiveTool('select');
+      }
+    }
+
     setDraggedId(null);
     setIsPanning(false);
     setIsResizing(false);
@@ -567,15 +674,31 @@ const AIBoard = () => {
         e.preventDefault();
         handleDelete();
       }
+      if ((e.metaKey || e.ctrlKey) && e.key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        handleUndo();
+      }
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) {
+        e.preventDefault();
+        handleRedo();
+      }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedId, handleDelete]);
+  }, [selectedId, handleDelete, handleUndo, handleRedo]);
+
+  // Close zoom menu on outside click
+  useEffect(() => {
+    if (!showZoomMenu) return;
+    const close = () => setShowZoomMenu(false);
+    window.addEventListener('click', close);
+    return () => window.removeEventListener('click', close);
+  }, [showZoomMenu]);
 
   // Tool handlers
   const handleCanvasClick = (e) => {
-    if (activeTool === 'select' || draggedId || isPanning) return;
+    if (activeTool === 'select' || activeTool === 'pen' || activeTool === 'arrow' || activeTool === 'line' || draggedId || isPanning) return;
 
     const rect = canvasRef.current.getBoundingClientRect();
     const x = (e.clientX - rect.left - viewportOffset.x) / zoom;
@@ -861,7 +984,120 @@ const AIBoard = () => {
         </div>
       );
     }
-    
+
+    // Render path (pen drawing)
+    if (obj.type === 'path') {
+      if (obj.points.length < 2) return null;
+
+      const pathString = obj.points
+        .map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`)
+        .join(' ');
+
+      return (
+        <svg
+          key={obj.id}
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: '5000px',
+            height: '5000px',
+            pointerEvents: 'none',
+            overflow: 'visible'
+          }}
+        >
+          <path
+            d={pathString}
+            stroke={obj.color}
+            strokeWidth={obj.strokeWidth}
+            fill="none"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            opacity={isSelected ? 0.7 : 1}
+          />
+        </svg>
+      );
+    }
+
+    // Render line
+    if (obj.type === 'line') {
+      return (
+        <svg
+          key={obj.id}
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: '5000px',
+            height: '5000px',
+            pointerEvents: 'none',
+            overflow: 'visible'
+          }}
+        >
+          <line
+            x1={obj.x1}
+            y1={obj.y1}
+            x2={obj.x2}
+            y2={obj.y2}
+            stroke={obj.color}
+            strokeWidth={obj.strokeWidth}
+            strokeLinecap="round"
+            opacity={isSelected ? 0.7 : 1}
+          />
+        </svg>
+      );
+    }
+
+    // Render arrow
+    if (obj.type === 'arrow') {
+      const dx = obj.x2 - obj.x1;
+      const dy = obj.y2 - obj.y1;
+      const angle = Math.atan2(dy, dx);
+      const arrowSize = 12;
+
+      return (
+        <svg
+          key={obj.id}
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: '5000px',
+            height: '5000px',
+            pointerEvents: 'none',
+            overflow: 'visible'
+          }}
+        >
+          <defs>
+            <marker
+              id={`arrowhead-${obj.id}`}
+              markerWidth={arrowSize}
+              markerHeight={arrowSize}
+              refX={arrowSize - 2}
+              refY={arrowSize / 2}
+              orient="auto"
+            >
+              <polygon
+                points={`0 0, ${arrowSize} ${arrowSize / 2}, 0 ${arrowSize}`}
+                fill={obj.color}
+              />
+            </marker>
+          </defs>
+          <line
+            x1={obj.x1}
+            y1={obj.y1}
+            x2={obj.x2}
+            y2={obj.y2}
+            stroke={obj.color}
+            strokeWidth={obj.strokeWidth}
+            strokeLinecap="round"
+            markerEnd={`url(#arrowhead-${obj.id})`}
+            opacity={isSelected ? 0.7 : 1}
+          />
+        </svg>
+      );
+    }
+
     return null;
   };
 
@@ -927,6 +1163,46 @@ const AIBoard = () => {
         </div>
         <div style={{ flex: 1 }} />
         <PresenceBar users={onlineUsers} currentUser={user} />
+        {/* Online count */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '5px',
+          padding: '5px 10px',
+          background: '#f5f5f5',
+          borderRadius: '6px',
+          fontSize: '12px',
+          color: '#555',
+          fontWeight: '500',
+        }}>
+          <Users size={13} />
+          {onlineUsers.length}
+        </div>
+        {/* Clear Board */}
+        <button
+          onClick={() => {
+            if (confirm('Clear all objects from this board?')) {
+              setBoardObjects([]);
+              setConversationHistory([]);
+              setAiResponse('');
+            }
+          }}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '5px',
+            padding: '6px 12px',
+            background: 'none',
+            border: '1px solid #f44336',
+            borderRadius: '6px',
+            cursor: 'pointer',
+            color: '#f44336',
+            fontSize: '13px',
+          }}
+        >
+          <Trash2 size={13} />
+          Clear
+        </button>
         <button
           onClick={() => setShowShareModal(true)}
           style={{
@@ -955,78 +1231,216 @@ const AIBoard = () => {
         />
       )}
 
-      {/* AI Command Panel */}
+      {/* AI Wizard Button - Floating */}
       <div style={{
-        padding: '16px',
-        background: 'white',
-        borderBottom: '2px solid #e0e0e0',
-        display: 'flex',
-        gap: '12px',
-        alignItems: 'flex-start'
+        position: 'fixed',
+        top: '90px',
+        right: '24px',
+        zIndex: 100,
       }}>
-        <div style={{ flex: 1 }}>
-          <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
-            <input
-              type="text"
-              value={aiInput}
-              onChange={(e) => setAiInput(e.target.value)}
-              onKeyPress={(e) => e.key === 'Enter' && processAICommand()}
-              placeholder="Ask AI to create, move, or arrange board elements..."
-              disabled={isProcessing}
-              style={{
-                flex: 1,
-                padding: '12px 16px',
+        {/* Wizard Button */}
+        <button
+          onClick={() => setShowAIChat(!showAIChat)}
+          onMouseEnter={() => setIsWizardHovered(true)}
+          onMouseLeave={() => setIsWizardHovered(false)}
+          style={{
+            width: '64px',
+            height: '64px',
+            borderRadius: '50%',
+            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+            border: 'none',
+            cursor: 'pointer',
+            fontSize: '40px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            boxShadow: '0 8px 24px rgba(102, 126, 234, 0.4)',
+            transition: 'all 0.3s ease',
+            transform: isWizardHovered ? 'scale(1.1)' : 'scale(1)',
+            position: 'relative',
+          }}
+        >
+          🧙‍♂️
+          {/* Magic dust particles */}
+          {isWizardHovered && (
+            <>
+              <div style={{
+                position: 'absolute',
+                top: '-10px',
+                left: '10px',
+                fontSize: '16px',
+                animation: 'float-sparkle-1 2s infinite ease-in-out',
+              }}>✨</div>
+              <div style={{
+                position: 'absolute',
+                top: '5px',
+                right: '-5px',
+                fontSize: '12px',
+                animation: 'float-sparkle-2 1.8s infinite ease-in-out',
+              }}>✨</div>
+              <div style={{
+                position: 'absolute',
+                bottom: '10px',
+                left: '-8px',
                 fontSize: '14px',
-                border: '2px solid #e0e0e0',
-                borderRadius: '8px',
-                outline: 'none'
-              }}
-            />
-            <button
-              onClick={processAICommand}
-              disabled={isProcessing || !aiInput.trim()}
-              style={{
-                padding: '12px 24px',
-                background: isProcessing ? '#ccc' : '#2196F3',
-                color: 'white',
-                border: 'none',
-                borderRadius: '8px',
-                cursor: isProcessing ? 'not-allowed' : 'pointer',
+                animation: 'float-sparkle-3 2.2s infinite ease-in-out',
+              }}>✨</div>
+            </>
+          )}
+        </button>
+
+        {/* AI Chat Box */}
+        {showAIChat && (
+          <div style={{
+            position: 'absolute',
+            top: '80px',
+            right: '0',
+            width: '400px',
+            maxWidth: '90vw',
+            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+            borderRadius: '16px',
+            boxShadow: '0 12px 48px rgba(102, 126, 234, 0.3)',
+            padding: '20px',
+            animation: 'slideUp 0.3s ease-out',
+          }}>
+            <div style={{
+              color: 'white',
+              marginBottom: '16px',
+            }}>
+              <div style={{
+                fontSize: '18px',
+                fontWeight: '600',
+                marginBottom: '8px',
                 display: 'flex',
                 alignItems: 'center',
                 gap: '8px',
-                fontSize: '14px',
-                fontWeight: '600'
-              }}
-            >
-              {isProcessing ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
-              {isProcessing ? 'Processing...' : 'Send'}
-            </button>
-          </div>
-          {aiResponse && (
-            <div style={{
-              padding: '12px',
-              background: '#f0f7ff',
-              border: '1px solid #90caf9',
-              borderRadius: '6px',
-              fontSize: '13px',
-              color: '#1976d2'
-            }}>
-              {aiResponse}
+              }}>
+                <span>🧙‍♂️</span>
+                <span>AI Assistant</span>
+              </div>
+              <div style={{
+                fontSize: '13px',
+                opacity: 0.9,
+              }}>
+                Tell me what you'd like to create or arrange
+              </div>
             </div>
-          )}
-        </div>
-      </div>
 
-      {/* Example Commands */}
-      <div style={{
-        padding: '12px 16px',
-        background: '#fff9e6',
-        borderBottom: '1px solid #ffe082',
-        fontSize: '12px',
-        color: '#666'
-      }}>
-        <strong>Try:</strong> "Create 3 yellow sticky notes with ideas for our project" • "Arrange all sticky notes in a 2x2 grid" • "Create a SWOT analysis with 4 frames" • "Move all pink notes to the right"
+            {/* Suggestions */}
+            <div style={{
+              background: 'rgba(255, 255, 255, 0.15)',
+              borderRadius: '12px',
+              padding: '12px',
+              marginBottom: '16px',
+              backdropFilter: 'blur(10px)',
+            }}>
+              <div style={{
+                fontSize: '12px',
+                color: 'rgba(255, 255, 255, 0.8)',
+                marginBottom: '8px',
+                fontWeight: '600',
+              }}>
+                Try these:
+              </div>
+              {[
+                'Create 3 yellow sticky notes with ideas for our project',
+                'Arrange all sticky notes in a 2x2 grid',
+                'Create a SWOT analysis with 4 frames',
+                'Move all pink notes to the right',
+              ].map((suggestion, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => {
+                    setAiInput(suggestion);
+                    processAICommand();
+                  }}
+                  style={{
+                    width: '100%',
+                    padding: '10px 12px',
+                    background: 'rgba(255, 255, 255, 0.2)',
+                    border: '1px solid rgba(255, 255, 255, 0.3)',
+                    borderRadius: '8px',
+                    color: 'white',
+                    fontSize: '12px',
+                    textAlign: 'left',
+                    cursor: 'pointer',
+                    marginBottom: idx < 3 ? '8px' : '0',
+                    transition: 'all 0.2s',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.3)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)';
+                  }}
+                >
+                  {suggestion}
+                </button>
+              ))}
+            </div>
+
+            {/* Input Box */}
+            <div style={{
+              display: 'flex',
+              gap: '8px',
+            }}>
+              <input
+                type="text"
+                value={aiInput}
+                onChange={(e) => setAiInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !isProcessing && aiInput.trim()) {
+                    processAICommand();
+                  }
+                }}
+                placeholder="Or type your own request..."
+                disabled={isProcessing}
+                style={{
+                  flex: 1,
+                  padding: '12px 16px',
+                  fontSize: '14px',
+                  border: 'none',
+                  borderRadius: '8px',
+                  background: 'rgba(255, 255, 255, 0.95)',
+                  outline: 'none',
+                }}
+              />
+              <button
+                onClick={processAICommand}
+                disabled={isProcessing || !aiInput.trim()}
+                style={{
+                  padding: '12px 16px',
+                  background: isProcessing ? 'rgba(255, 255, 255, 0.5)' : 'white',
+                  color: '#667eea',
+                  border: 'none',
+                  borderRadius: '8px',
+                  cursor: isProcessing || !aiInput.trim() ? 'not-allowed' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  fontSize: '14px',
+                  fontWeight: '600',
+                }}
+              >
+                {isProcessing ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+              </button>
+            </div>
+
+            {/* AI Response */}
+            {aiResponse && (
+              <div style={{
+                marginTop: '12px',
+                padding: '12px',
+                background: 'rgba(255, 255, 255, 0.95)',
+                borderRadius: '8px',
+                fontSize: '13px',
+                color: '#667eea',
+              }}>
+                {aiResponse}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Canvas */}
@@ -1036,6 +1450,12 @@ const AIBoard = () => {
           position: 'absolute',
           left: '16px',
           top: '16px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '8px',
+          zIndex: 10
+        }}>
+        <div style={{
           background: 'white',
           borderRadius: '12px',
           boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
@@ -1044,7 +1464,6 @@ const AIBoard = () => {
           padding: '8px',
           gap: '4px',
           alignItems: 'center',
-          zIndex: 10
         }}>
           {[
             { id: 'select', icon: MousePointer, label: 'Select' },
@@ -1088,6 +1507,47 @@ const AIBoard = () => {
               </button>
             );
           })}
+
+          {/* Color Picker - shows when drawing tool is active */}
+          {(activeTool === 'pen' || activeTool === 'arrow' || activeTool === 'line') && (
+            <>
+              <div style={{
+                width: '100%',
+                height: '1px',
+                background: '#e0e0e0',
+                margin: '8px 0'
+              }} />
+
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(3, 1fr)',
+                gap: '6px',
+                padding: '4px'
+              }}>
+                {[
+                  '#000000', '#FF5252', '#FF9800',
+                  '#FFEB3B', '#4CAF50', '#2196F3',
+                  '#9C27B0', '#E91E63', '#FFFFFF'
+                ].map(color => (
+                  <button
+                    key={color}
+                    onClick={() => setDrawColor(color)}
+                    title={color}
+                    style={{
+                      width: '24px',
+                      height: '24px',
+                      borderRadius: '4px',
+                      background: color,
+                      border: drawColor === color ? '3px solid #2196F3' : color === '#FFFFFF' ? '2px solid #ddd' : '2px solid transparent',
+                      cursor: 'pointer',
+                      padding: 0,
+                      transition: 'all 0.2s'
+                    }}
+                  />
+                ))}
+              </div>
+            </>
+          )}
 
           {/* Layering and Delete buttons - shows when object is selected */}
           {selectedId && (
@@ -1241,6 +1701,199 @@ const AIBoard = () => {
           )}
         </div>
 
+          {/* Undo / Redo - separate panel below the toolbar */}
+          <div style={{
+            background: 'white',
+            borderRadius: '10px',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+            display: 'flex',
+            flexDirection: 'column',
+            padding: '6px',
+            gap: '4px',
+            alignItems: 'center',
+          }}>
+            {[
+              { action: handleUndo, icon: Undo, label: 'Undo (⌘Z)', enabled: historyIndex > 0 },
+              { action: handleRedo, icon: Redo, label: 'Redo (⌘⇧Z)', enabled: historyIndex < history.length - 1 },
+            ].map(({ action, icon: Icon, label, enabled }) => (
+              <button
+                key={label}
+                onClick={enabled ? action : undefined}
+                title={label}
+                disabled={!enabled}
+                style={{
+                  width: '44px',
+                  height: '44px',
+                  border: 'none',
+                  borderRadius: '8px',
+                  background: 'transparent',
+                  color: enabled ? '#333' : '#ccc',
+                  cursor: enabled ? 'pointer' : 'not-allowed',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  transition: 'all 0.2s',
+                }}
+                onMouseEnter={(e) => {
+                  if (enabled) e.currentTarget.style.background = '#f5f5f5';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'transparent';
+                }}
+              >
+                <Icon size={20} />
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Zoom Control - bottom right */}
+        <div
+          onClick={e => e.stopPropagation()}
+          style={{
+          position: 'absolute',
+          bottom: '16px',
+          right: '16px',
+          zIndex: 20,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'flex-end',
+          gap: '4px',
+        }}>
+          {/* Zoom preset popup */}
+          {showZoomMenu && (
+            <div style={{
+              background: 'white',
+              borderRadius: '10px',
+              boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
+              overflow: 'hidden',
+              minWidth: '180px',
+            }}>
+              {/* Fit to screen */}
+              <button
+                onClick={() => { fitToScreen(); setShowZoomMenu(false); }}
+                style={{
+                  width: '100%',
+                  padding: '10px 16px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  background: 'none',
+                  border: 'none',
+                  borderBottom: '1px solid #f0f0f0',
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                  color: '#333',
+                  textAlign: 'left',
+                }}
+                onMouseEnter={e => e.currentTarget.style.background = '#f5f5f5'}
+                onMouseLeave={e => e.currentTarget.style.background = 'none'}
+              >
+                <Maximize2 size={15} color="#666" />
+                Fit to screen
+              </button>
+              {/* Zoom presets */}
+              {[2, 1.5, 1, 0.5].map(level => (
+                <button
+                  key={level}
+                  onClick={() => { setZoom(level); setShowZoomMenu(false); }}
+                  style={{
+                    width: '100%',
+                    padding: '10px 16px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px',
+                    background: Math.round(zoom * 100) === Math.round(level * 100) ? '#f0f4ff' : 'none',
+                    border: 'none',
+                    borderBottom: level !== 0.5 ? '1px solid #f0f0f0' : 'none',
+                    cursor: 'pointer',
+                    fontSize: '13px',
+                    color: Math.round(zoom * 100) === Math.round(level * 100) ? '#667eea' : '#333',
+                    fontWeight: Math.round(zoom * 100) === Math.round(level * 100) ? '600' : '400',
+                    textAlign: 'left',
+                  }}
+                  onMouseEnter={e => { if (Math.round(zoom * 100) !== Math.round(level * 100)) e.currentTarget.style.background = '#f5f5f5'; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = Math.round(zoom * 100) === Math.round(level * 100) ? '#f0f4ff' : 'none'; }}
+                >
+                  <Plus size={15} color="#aaa" />
+                  {Math.round(level * 100)}%
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Zoom bar */}
+          <div style={{
+            background: 'white',
+            borderRadius: '8px',
+            boxShadow: '0 2px 10px rgba(0,0,0,0.12)',
+            display: 'flex',
+            alignItems: 'center',
+            overflow: 'hidden',
+          }}>
+            <button
+              onClick={zoomOut}
+              title="Zoom out"
+              style={{
+                width: '36px',
+                height: '36px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                background: 'none',
+                border: 'none',
+                borderRight: '1px solid #eee',
+                cursor: 'pointer',
+                color: '#555',
+              }}
+              onMouseEnter={e => e.currentTarget.style.background = '#f5f5f5'}
+              onMouseLeave={e => e.currentTarget.style.background = 'none'}
+            >
+              <Minus size={16} />
+            </button>
+            <button
+              onClick={() => setShowZoomMenu(prev => !prev)}
+              title="Zoom options"
+              style={{
+                padding: '0 12px',
+                height: '36px',
+                background: showZoomMenu ? '#f0f4ff' : 'none',
+                border: 'none',
+                cursor: 'pointer',
+                fontSize: '13px',
+                fontWeight: '600',
+                color: showZoomMenu ? '#667eea' : '#333',
+                minWidth: '58px',
+                letterSpacing: '-0.3px',
+              }}
+              onMouseEnter={e => { if (!showZoomMenu) e.currentTarget.style.background = '#f5f5f5'; }}
+              onMouseLeave={e => { e.currentTarget.style.background = showZoomMenu ? '#f0f4ff' : 'none'; }}
+            >
+              {Math.round(zoom * 100)}%
+            </button>
+            <button
+              onClick={zoomIn}
+              title="Zoom in"
+              style={{
+                width: '36px',
+                height: '36px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                background: 'none',
+                border: 'none',
+                borderLeft: '1px solid #eee',
+                cursor: 'pointer',
+                color: '#555',
+              }}
+              onMouseEnter={e => e.currentTarget.style.background = '#f5f5f5'}
+              onMouseLeave={e => e.currentTarget.style.background = 'none'}
+            >
+              <Plus size={16} />
+            </button>
+          </div>
+        </div>
+
         {/* Main Canvas */}
         <div
           ref={canvasRef}
@@ -1271,6 +1924,31 @@ const AIBoard = () => {
           height: '5000px'
         }}>
           {boardObjects.map(renderObject)}
+
+          {/* Drawing Preview - Path */}
+          {isDrawing && currentPath.length > 1 && (
+            <svg
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: '5000px',
+                height: '5000px',
+                pointerEvents: 'none',
+                overflow: 'visible'
+              }}
+            >
+              <path
+                d={currentPath.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ')}
+                stroke={drawColor}
+                strokeWidth={3}
+                fill="none"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                opacity={0.7}
+              />
+            </svg>
+          )}
 
           {/* Multiplayer Cursors */}
           {onlineUsers
@@ -1315,46 +1993,66 @@ const AIBoard = () => {
         </div>
       </div>
 
-      {/* Bottom Toolbar */}
+      {/* Bottom Bar */}
       <div style={{
-        padding: '12px 16px',
+        padding: '8px 16px',
         background: 'white',
-        borderTop: '2px solid #e0e0e0',
+        borderTop: '1px solid #e0e0e0',
         display: 'flex',
-        gap: '16px',
         alignItems: 'center',
-        fontSize: '13px',
-        color: '#666'
+        fontSize: '12px',
+        color: '#999',
+        userSelect: 'none',
       }}>
-        <div>Objects: {boardObjects.length}</div>
-        <div>Zoom: {Math.round(zoom * 100)}%</div>
-        <div>Online: {onlineUsers.length}</div>
-        <div style={{ flex: 1 }} />
-        <button
-          onClick={() => {
-            if (confirm('Clear all objects from this board?')) {
-              setBoardObjects([]);
-              setConversationHistory([]);
-              setAiResponse('');
-            }
-          }}
-          style={{
-            padding: '8px 16px',
-            background: '#f44336',
-            color: 'white',
-            border: 'none',
-            borderRadius: '6px',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px',
-            fontSize: '13px'
-          }}
-        >
-          <Trash2 size={14} />
-          Clear Board
-        </button>
+        <div>{boardObjects.length} object{boardObjects.length !== 1 ? 's' : ''}</div>
       </div>
+
+      {/* Animations */}
+      <style>{`
+        @keyframes float-sparkle-1 {
+          0%, 100% {
+            transform: translate(0, 0) scale(1);
+            opacity: 1;
+          }
+          50% {
+            transform: translate(-10px, -20px) scale(1.2);
+            opacity: 0.6;
+          }
+        }
+
+        @keyframes float-sparkle-2 {
+          0%, 100% {
+            transform: translate(0, 0) scale(1);
+            opacity: 1;
+          }
+          50% {
+            transform: translate(10px, -15px) scale(1.3);
+            opacity: 0.7;
+          }
+        }
+
+        @keyframes float-sparkle-3 {
+          0%, 100% {
+            transform: translate(0, 0) scale(1);
+            opacity: 1;
+          }
+          50% {
+            transform: translate(-15px, 10px) scale(1.1);
+            opacity: 0.5;
+          }
+        }
+
+        @keyframes slideUp {
+          from {
+            opacity: 0;
+            transform: translateY(20px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+      `}</style>
     </div>
   );
 };

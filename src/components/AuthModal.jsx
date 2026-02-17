@@ -4,7 +4,6 @@ import { useAuth } from '../hooks/useAuth';
 
 export default function AuthModal() {
   const { signIn, signUp, signInWithGoogle } = useAuth();
-  const [mode, setMode] = useState('signup');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -22,12 +21,7 @@ export default function AuthModal() {
     try {
       // Save "Keep me logged in" preference
       localStorage.setItem('keepLoggedIn', keepLoggedIn.toString());
-
-      if (mode === 'login') {
-        await signIn(email, password);
-      } else {
-        await signUp(email, password);
-      }
+      await signUp(email, password);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -291,7 +285,6 @@ export default function AuthModal() {
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                onFocus={handleEmailFocus}
                 placeholder="Enter your work email"
                 required
                 style={{
@@ -538,10 +531,20 @@ export default function AuthModal() {
               <div style={{ flex: 1, height: '1px', background: '#e0e0e0' }} />
             </div>
 
-            <form onSubmit={(e) => {
+            <form onSubmit={async (e) => {
               e.preventDefault();
-              setMode('login');
-              handleSubmit(e);
+              setError('');
+              setLoading(true);
+
+              try {
+                // Save "Keep me logged in" preference
+                localStorage.setItem('keepLoggedIn', keepLoggedIn.toString());
+                await signIn(email, password);
+              } catch (err) {
+                setError(err.message);
+              } finally {
+                setLoading(false);
+              }
             }}>
               <div style={{ marginBottom: '16px' }}>
                 <input
