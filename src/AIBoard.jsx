@@ -99,6 +99,7 @@ const AIBoard = () => {
   };
 
   const canvasRef = useRef(null);
+  const wheelListenerRef = useRef(null);
   const nextId = useRef(1);
   const prevUserCount = useRef(0);
 
@@ -995,12 +996,19 @@ const AIBoard = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [selectedId, selectedIds, handleDelete, handleUndo, handleRedo]);
 
-  // Attach wheel listener as non-passive so preventDefault works
-  useEffect(() => {
-    const el = canvasRef.current;
-    if (!el) return;
-    el.addEventListener('wheel', handleWheel, { passive: false });
-    return () => el.removeEventListener('wheel', handleWheel);
+  // Callback ref to attach wheel listener as non-passive so preventDefault works
+  const canvasRefCallback = useCallback((el) => {
+    // Detach from previous element
+    if (wheelListenerRef.current) {
+      wheelListenerRef.current.removeEventListener('wheel', handleWheel);
+    }
+    canvasRef.current = el;
+    if (el) {
+      el.addEventListener('wheel', handleWheel, { passive: false });
+      wheelListenerRef.current = el;
+    } else {
+      wheelListenerRef.current = null;
+    }
   }, [handleWheel]);
 
   // Close zoom menu on outside click
@@ -2674,7 +2682,7 @@ const AIBoard = () => {
 
         {/* Main Canvas */}
         <div
-          ref={canvasRef}
+          ref={canvasRefCallback}
           onMouseDown={handleMouseDown}
           onClick={handleCanvasClick}
           onMouseMove={handleMouseMove}
