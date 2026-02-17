@@ -1,7 +1,22 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
-import { Send, Loader2, Trash2, MousePointer, Pen, StickyNote, Type, Square, Circle, ArrowRight, Minus } from 'lucide-react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { Send, Loader2, Trash2, MousePointer, Pen, StickyNote, Type, Square, Circle, ArrowRight, Minus, ArrowLeft, Share2, Cloud, CloudOff, Loader, ChevronsUp, ChevronUp, ChevronDown, ChevronsDown } from 'lucide-react';
+import { useAuth } from './hooks/useAuth';
+import { useBoard } from './hooks/useBoard';
+import { useAutoSave } from './hooks/useAutoSave';
+import { usePresence } from './hooks/usePresence';
+import PresenceBar from './components/PresenceBar';
+import ShareModal from './components/ShareModal';
+
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
 const AIBoard = () => {
+  const { id: boardId } = useParams();
+  const navigate = useNavigate();
+  const { user, session } = useAuth();
+  const { loadBoard, saveBoard } = useBoard();
+  const onlineUsers = usePresence(boardId, user);
+
   const [boardObjects, setBoardObjects] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
   const [draggedId, setDraggedId] = useState(null);
@@ -19,9 +34,38 @@ const AIBoard = () => {
   const [resizeHandle, setResizeHandle] = useState(null);
   const [editingId, setEditingId] = useState(null);
   const [editingText, setEditingText] = useState('');
+  const [boardTitle, setBoardTitle] = useState('Untitled Board');
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [boardLoaded, setBoardLoaded] = useState(false);
 
   const canvasRef = useRef(null);
   const nextId = useRef(1);
+
+  // Auto-save
+  const saveStatus = useAutoSave(boardId, boardObjects, nextId.current, boardLoaded ? saveBoard : null);
+
+  // Load board data on mount
+  useEffect(() => {
+    if (!boardId) return;
+    const load = async () => {
+      try {
+        const board = await loadBoard(boardId);
+        setBoardTitle(board.title || 'Untitled Board');
+        if (board.board_data) {
+          const data = typeof board.board_data === 'string'
+            ? JSON.parse(board.board_data)
+            : board.board_data;
+          setBoardObjects(data.objects || []);
+          nextId.current = data.nextId || (data.objects?.length ? Math.max(...data.objects.map(o => o.id)) + 1 : 1);
+        }
+        setBoardLoaded(true);
+      } catch (err) {
+        console.error('Failed to load board:', err);
+        navigate('/');
+      }
+    };
+    load();
+  }, [boardId]);
 
   // Board manipulation tools for AI
   const boardTools = [
@@ -313,10 +357,11 @@ const AIBoard = () => {
       let assistantResponse = '';
       
       while (continueProcessing) {
-        const response = await fetch("http://localhost:3001/api/messages", {
+        const response = await fetch(`${API_URL}/api/messages`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
+            "Authorization": `Bearer ${session?.access_token}`,
           },
           body: JSON.stringify({
             model: "claude-sonnet-4-20250514",
@@ -460,6 +505,47 @@ const AIBoard = () => {
       setBoardObjects(prev => prev.filter(obj => obj.id !== selectedId));
       setSelectedId(null);
     }
+  }, [selectedId]);
+
+  // Layering functions
+  const bringToFront = useCallback(() => {
+    if (!selectedId) return;
+    setBoardObjects(prev => {
+      const obj = prev.find(o => o.id === selectedId);
+      if (!obj) return prev;
+      return [...prev.filter(o => o.id !== selectedId), obj];
+    });
+  }, [selectedId]);
+
+  const sendToBack = useCallback(() => {
+    if (!selectedId) return;
+    setBoardObjects(prev => {
+      const obj = prev.find(o => o.id === selectedId);
+      if (!obj) return prev;
+      return [obj, ...prev.filter(o => o.id !== selectedId)];
+    });
+  }, [selectedId]);
+
+  const bringForward = useCallback(() => {
+    if (!selectedId) return;
+    setBoardObjects(prev => {
+      const index = prev.findIndex(o => o.id === selectedId);
+      if (index === -1 || index === prev.length - 1) return prev;
+      const newArray = [...prev];
+      [newArray[index], newArray[index + 1]] = [newArray[index + 1], newArray[index]];
+      return newArray;
+    });
+  }, [selectedId]);
+
+  const sendBackward = useCallback(() => {
+    if (!selectedId) return;
+    setBoardObjects(prev => {
+      const index = prev.findIndex(o => o.id === selectedId);
+      if (index <= 0) return prev;
+      const newArray = [...prev];
+      [newArray[index], newArray[index - 1]] = [newArray[index - 1], newArray[index]];
+      return newArray;
+    });
   }, [selectedId]);
 
   // Keyboard shortcuts
@@ -769,6 +855,94 @@ const AIBoard = () => {
 
   return (
     <div style={{ width: '100vw', height: '100vh', display: 'flex', flexDirection: 'column', background: '#f5f5f5' }}>
+      {/* Board Header */}
+      <div style={{
+        padding: '10px 16px',
+        background: 'white',
+        borderBottom: '1px solid #e0e0e0',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '12px',
+      }}>
+        <button
+          onClick={() => navigate('/')}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '4px',
+            padding: '6px 10px',
+            background: 'none',
+            border: '1px solid #ddd',
+            borderRadius: '6px',
+            cursor: 'pointer',
+            color: '#666',
+            fontSize: '13px',
+          }}
+        >
+          <ArrowLeft size={14} />
+          Back
+        </button>
+        <input
+          type="text"
+          value={boardTitle}
+          onChange={(e) => setBoardTitle(e.target.value)}
+          onBlur={() => saveBoard(boardId, null, boardTitle)}
+          style={{
+            border: 'none',
+            outline: 'none',
+            fontSize: '16px',
+            fontWeight: '600',
+            color: '#1a1a1a',
+            padding: '4px 8px',
+            borderRadius: '4px',
+            background: 'transparent',
+            minWidth: '200px',
+          }}
+          onFocus={(e) => e.target.style.background = '#f5f5f5'}
+          onBlurCapture={(e) => e.target.style.background = 'transparent'}
+        />
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '4px',
+          fontSize: '12px',
+          color: saveStatus === 'saved' ? '#4caf50' : saveStatus === 'saving' ? '#ff9800' : saveStatus === 'error' ? '#f44336' : '#999',
+        }}>
+          {saveStatus === 'saved' && <><Cloud size={14} /> Saved</>}
+          {saveStatus === 'saving' && <><Loader size={14} /> Saving...</>}
+          {saveStatus === 'unsaved' && <><CloudOff size={14} /> Unsaved</>}
+          {saveStatus === 'error' && <><CloudOff size={14} /> Save failed</>}
+        </div>
+        <div style={{ flex: 1 }} />
+        <PresenceBar users={onlineUsers} currentUser={user} />
+        <button
+          onClick={() => setShowShareModal(true)}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            padding: '8px 14px',
+            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+            color: 'white',
+            border: 'none',
+            borderRadius: '6px',
+            cursor: 'pointer',
+            fontSize: '13px',
+            fontWeight: '600',
+          }}
+        >
+          <Share2 size={14} />
+          Share
+        </button>
+      </div>
+
+      {showShareModal && (
+        <ShareModal
+          boardId={boardId}
+          onClose={() => setShowShareModal(false)}
+        />
+      )}
+
       {/* AI Command Panel */}
       <div style={{
         padding: '16px',
@@ -903,7 +1077,7 @@ const AIBoard = () => {
             );
           })}
 
-          {/* Delete button - shows when object is selected */}
+          {/* Layering and Delete buttons - shows when object is selected */}
           {selectedId && (
             <>
               <div style={{
@@ -912,6 +1086,120 @@ const AIBoard = () => {
                 background: '#e0e0e0',
                 margin: '8px 0'
               }} />
+
+              {/* Layering controls */}
+              <button
+                onClick={bringToFront}
+                title="Bring to Front"
+                style={{
+                  width: '44px',
+                  height: '44px',
+                  border: 'none',
+                  borderRadius: '8px',
+                  background: 'transparent',
+                  color: '#333',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  transition: 'all 0.2s'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = '#f5f5f5';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'transparent';
+                }}
+              >
+                <ChevronsUp size={20} />
+              </button>
+
+              <button
+                onClick={bringForward}
+                title="Bring Forward"
+                style={{
+                  width: '44px',
+                  height: '44px',
+                  border: 'none',
+                  borderRadius: '8px',
+                  background: 'transparent',
+                  color: '#333',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  transition: 'all 0.2s'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = '#f5f5f5';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'transparent';
+                }}
+              >
+                <ChevronUp size={20} />
+              </button>
+
+              <button
+                onClick={sendBackward}
+                title="Send Backward"
+                style={{
+                  width: '44px',
+                  height: '44px',
+                  border: 'none',
+                  borderRadius: '8px',
+                  background: 'transparent',
+                  color: '#333',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  transition: 'all 0.2s'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = '#f5f5f5';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'transparent';
+                }}
+              >
+                <ChevronDown size={20} />
+              </button>
+
+              <button
+                onClick={sendToBack}
+                title="Send to Back"
+                style={{
+                  width: '44px',
+                  height: '44px',
+                  border: 'none',
+                  borderRadius: '8px',
+                  background: 'transparent',
+                  color: '#333',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  transition: 'all 0.2s'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = '#f5f5f5';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'transparent';
+                }}
+              >
+                <ChevronsDown size={20} />
+              </button>
+
+              <div style={{
+                width: '100%',
+                height: '1px',
+                background: '#e0e0e0',
+                margin: '8px 0'
+              }} />
+
+              {/* Delete button */}
               <button
                 onClick={handleDelete}
                 title="Delete (Del)"
@@ -988,12 +1276,15 @@ const AIBoard = () => {
       }}>
         <div>Objects: {boardObjects.length}</div>
         <div>Zoom: {Math.round(zoom * 100)}%</div>
+        <div>Online: {onlineUsers.length}</div>
         <div style={{ flex: 1 }} />
         <button
           onClick={() => {
-            setBoardObjects([]);
-            setConversationHistory([]);
-            setAiResponse('');
+            if (confirm('Clear all objects from this board?')) {
+              setBoardObjects([]);
+              setConversationHistory([]);
+              setAiResponse('');
+            }
           }}
           style={{
             padding: '8px 16px',
