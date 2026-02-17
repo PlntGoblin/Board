@@ -43,6 +43,7 @@ const AIBoard = () => {
   const [isDrawing, setIsDrawing] = useState(false);
   const [currentPath, setCurrentPath] = useState([]);
   const [drawColor, setDrawColor] = useState('#000000');
+  const [strokeWidth, setStrokeWidth] = useState(3);
   const [lineStart, setLineStart] = useState(null);
 
   const [history, setHistory] = useState([]);
@@ -575,7 +576,7 @@ const AIBoard = () => {
         type: 'path',
         points: currentPath,
         color: drawColor,
-        strokeWidth: 3
+        strokeWidth: strokeWidth
       };
       setBoardObjects(prev => [...prev, newPath]);
       setIsDrawing(false);
@@ -598,7 +599,7 @@ const AIBoard = () => {
           x2: x,
           y2: y,
           color: drawColor,
-          strokeWidth: 3
+          strokeWidth: strokeWidth
         };
         setBoardObjects(prev => [...prev, newLine]);
         setLineStart(null);
@@ -1508,47 +1509,6 @@ const AIBoard = () => {
             );
           })}
 
-          {/* Color Picker - shows when drawing tool is active */}
-          {(activeTool === 'pen' || activeTool === 'arrow' || activeTool === 'line') && (
-            <>
-              <div style={{
-                width: '100%',
-                height: '1px',
-                background: '#e0e0e0',
-                margin: '8px 0'
-              }} />
-
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(3, 1fr)',
-                gap: '6px',
-                padding: '4px'
-              }}>
-                {[
-                  '#000000', '#FF5252', '#FF9800',
-                  '#FFEB3B', '#4CAF50', '#2196F3',
-                  '#9C27B0', '#E91E63', '#FFFFFF'
-                ].map(color => (
-                  <button
-                    key={color}
-                    onClick={() => setDrawColor(color)}
-                    title={color}
-                    style={{
-                      width: '24px',
-                      height: '24px',
-                      borderRadius: '4px',
-                      background: color,
-                      border: drawColor === color ? '3px solid #2196F3' : color === '#FFFFFF' ? '2px solid #ddd' : '2px solid transparent',
-                      cursor: 'pointer',
-                      padding: 0,
-                      transition: 'all 0.2s'
-                    }}
-                  />
-                ))}
-              </div>
-            </>
-          )}
-
           {/* Layering and Delete buttons - shows when object is selected */}
           {selectedId && (
             <>
@@ -1746,6 +1706,86 @@ const AIBoard = () => {
             ))}
           </div>
         </div>
+
+        {/* Drawing options panel - appears to the right of the toolbar when a drawing tool is active */}
+        {(activeTool === 'pen' || activeTool === 'arrow' || activeTool === 'line') && (
+          <div style={{
+            position: 'absolute',
+            left: '88px',
+            top: '16px',
+            background: 'white',
+            borderRadius: '12px',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+            padding: '10px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '8px',
+            zIndex: 10,
+          }}>
+            {/* Label */}
+            <div style={{ fontSize: '10px', color: '#aaa', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', textAlign: 'center' }}>
+              Color
+            </div>
+            {/* Color swatches */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '6px' }}>
+              {[
+                '#000000', '#FF5252',
+                '#FF9800', '#FFEB3B',
+                '#4CAF50', '#2196F3',
+                '#9C27B0', '#E91E63',
+                '#FFFFFF',
+              ].map(color => (
+                <button
+                  key={color}
+                  onClick={() => setDrawColor(color)}
+                  title={color}
+                  style={{
+                    width: '28px',
+                    height: '28px',
+                    borderRadius: '6px',
+                    background: color,
+                    border: drawColor === color ? '3px solid #2196F3' : color === '#FFFFFF' ? '2px solid #ddd' : '2px solid transparent',
+                    cursor: 'pointer',
+                    padding: 0,
+                    transition: 'transform 0.1s',
+                    transform: drawColor === color ? 'scale(1.15)' : 'scale(1)',
+                  }}
+                />
+              ))}
+            </div>
+
+            {/* Divider */}
+            <div style={{ height: '1px', background: '#f0f0f0' }} />
+
+            {/* Stroke width */}
+            <div style={{ fontSize: '10px', color: '#aaa', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', textAlign: 'center' }}>
+              Width
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'center' }}>
+              {[2, 4, 8].map(w => (
+                <button
+                  key={w}
+                  onClick={() => setStrokeWidth(w)}
+                  title={`${w}px`}
+                  style={{
+                    width: '44px',
+                    height: '24px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    background: strokeWidth === w ? '#f0f4ff' : 'transparent',
+                    border: strokeWidth === w ? '1.5px solid #667eea' : '1.5px solid transparent',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    padding: '0 6px',
+                  }}
+                >
+                  <div style={{ width: '100%', height: `${w}px`, borderRadius: w, background: drawColor === '#FFFFFF' ? '#ccc' : drawColor }} />
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Zoom Control - bottom right */}
         <div
