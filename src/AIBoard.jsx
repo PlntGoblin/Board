@@ -880,7 +880,7 @@ const AIBoard = () => {
     setResizeHandle(null);
   };
 
-  const handleWheel = (e) => {
+  const handleWheel = useCallback((e) => {
     e.preventDefault();
     const rect = canvasRef.current?.getBoundingClientRect();
     if (!rect) return;
@@ -918,7 +918,7 @@ const AIBoard = () => {
       }));
       return newZoom;
     });
-  };
+  }, []);
 
   // Delete selected object(s)
   const handleDelete = useCallback(() => {
@@ -994,6 +994,14 @@ const AIBoard = () => {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [selectedId, selectedIds, handleDelete, handleUndo, handleRedo]);
+
+  // Attach wheel listener as non-passive so preventDefault works
+  useEffect(() => {
+    const el = canvasRef.current;
+    if (!el) return;
+    el.addEventListener('wheel', handleWheel, { passive: false });
+    return () => el.removeEventListener('wheel', handleWheel);
+  }, [handleWheel]);
 
   // Close zoom menu on outside click
   useEffect(() => {
@@ -2672,7 +2680,7 @@ const AIBoard = () => {
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp}
           onMouseLeave={handleMouseUp}
-          onWheel={handleWheel}
+
           style={{
             width: '100%',
             height: '100%',
