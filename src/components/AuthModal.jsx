@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Eye, EyeOff, ArrowRight, Mail } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 
@@ -11,6 +11,31 @@ export default function AuthModal() {
   const [showPasswordText, setShowPasswordText] = useState(false);
   const [isSignUp, setIsSignUp] = useState(false);
   const [confirmationSent, setConfirmationSent] = useState(false);
+
+  const stars = useMemo(() => {
+    return Array.from({ length: 90 }, (_, i) => ({
+      id: i,
+      left: `${Math.random() * 100}%`,
+      top: `${Math.random() * 100}%`,
+      size: Math.random() * 2.5 + 0.5,
+      opacity: Math.random() * 0.7 + 0.3,
+      delay: `${Math.random() * 5}s`,
+      duration: `${Math.random() * 3 + 2}s`,
+    }));
+  }, []);
+
+  const shootingStars = useMemo(() => {
+    return Array.from({ length: 2 }, (_, i) => ({
+      id: i,
+      top: `${Math.random() * 40 + 5}%`,
+      left: `${Math.random() * 60}%`,
+      delay: `${i * 5 + Math.random() * 3}s`,
+      duration: `${Math.random() * 0.4 + 0.8}s`,
+      angle: Math.random() * 15 + 30,
+      length: Math.random() * 60 + 50,
+      cycleDuration: `${10 + Math.random() * 4}s`,
+    }));
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -72,14 +97,53 @@ export default function AuthModal() {
           borderRadius: '50%',
           background: 'radial-gradient(circle, rgba(56,189,248,0.04) 0%, transparent 60%)',
         }} />
-        {/* Grid overlay */}
+
+        {/* Twinkling stars */}
+        {stars.map((star) => (
+          <div key={star.id} style={{
+            position: 'absolute',
+            left: star.left,
+            top: star.top,
+            width: `${star.size}px`,
+            height: `${star.size}px`,
+            borderRadius: '50%',
+            background: star.size > 2
+              ? 'radial-gradient(circle, rgba(220,230,255,0.9), rgba(180,200,255,0.4))'
+              : 'rgba(200,220,255,0.8)',
+            boxShadow: star.size > 1.8
+              ? `0 0 ${star.size * 2}px rgba(180,200,255,0.4)`
+              : 'none',
+            opacity: star.opacity,
+            animation: `twinkle ${star.duration} ${star.delay} infinite ease-in-out`,
+          }} />
+        ))}
+
+        {/* Shooting stars */}
+        {shootingStars.map((s) => (
+          <div key={`shoot-${s.id}`} style={{
+            position: 'absolute',
+            top: s.top,
+            left: s.left,
+            width: `${s.length}px`,
+            height: '1.5px',
+            transform: `rotate(${s.angle}deg)`,
+            animation: `shootingStar ${s.cycleDuration} ${s.delay} infinite ease-out`,
+            opacity: 0,
+          }}>
+            <div style={{
+              width: '100%',
+              height: '100%',
+              background: 'linear-gradient(90deg, rgba(255,255,255,0.8), rgba(180,200,255,0.4) 40%, transparent)',
+              borderRadius: '1px',
+            }} />
+          </div>
+        ))}
+
+        {/* Dot overlay */}
         <div style={{
           position: 'absolute', inset: 0,
-          backgroundImage: `
-            linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px)
-          `,
-          backgroundSize: '60px 60px',
+          backgroundImage: 'radial-gradient(circle, rgba(200,220,255,0.15) 1px, transparent 1px)',
+          backgroundSize: '24px 24px',
         }} />
       </div>
 
@@ -97,21 +161,16 @@ export default function AuthModal() {
           alignItems: 'center',
           marginBottom: '36px',
         }}>
-          <div style={{
-            width: '48px', height: '48px',
-            borderRadius: '14px',
-            background: 'linear-gradient(135deg, #38bdf8, #818cf8)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            fontSize: '22px',
-            fontWeight: '700',
-            color: 'white',
-            marginBottom: '16px',
-            boxShadow: '0 0 30px rgba(56,189,248,0.3)',
-          }}>
-            B
-          </div>
+          <img
+            src="/logo.png"
+            alt="Dark Matters"
+            style={{
+              width: '56px', height: '56px',
+              borderRadius: '14px',
+              marginBottom: '16px',
+              filter: 'drop-shadow(0 0 20px rgba(56,189,248,0.3))',
+            }}
+          />
           <h1 style={{
             margin: 0,
             fontSize: '24px',
@@ -119,14 +178,14 @@ export default function AuthModal() {
             color: '#f0f0f5',
             letterSpacing: '-0.5px',
           }}>
-            {isSignUp ? 'Create your account' : 'Welcome back'}
+            Dark Matters
           </h1>
           <p style={{
             margin: '8px 0 0 0',
             fontSize: '14px',
             color: '#64748b',
           }}>
-            {isSignUp ? 'Start building on The Board' : 'Sign in to The Board'}
+            {isSignUp ? 'Create your account' : 'Welcome back'}
           </p>
         </div>
 
@@ -347,6 +406,17 @@ export default function AuthModal() {
         @keyframes drift2 {
           0%, 100% { transform: translate(0, 0); }
           50% { transform: translate(-60px, -80px); }
+        }
+        @keyframes twinkle {
+          0%, 100% { opacity: 0.2; transform: scale(0.8); }
+          50% { opacity: 1; transform: scale(1.2); }
+        }
+        @keyframes shootingStar {
+          0% { opacity: 0; transform: translateX(0); }
+          1% { opacity: 0.7; transform: translateX(0); }
+          4% { opacity: 0.7; transform: translateX(120px); }
+          6% { opacity: 0; transform: translateX(200px); }
+          100% { opacity: 0; transform: translateX(200px); }
         }
         input::placeholder {
           color: #475569;

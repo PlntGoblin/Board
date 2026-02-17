@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Plus, Search, Home, Clock, Star, Grid3x3, List, Trash2, LogOut } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
@@ -279,6 +279,30 @@ export default function Dashboard() {
     return matchesSearch;
   });
 
+  const stars = useMemo(() => {
+    return Array.from({ length: 90 }, (_, i) => ({
+      id: i,
+      left: `${Math.random() * 100}%`,
+      top: `${Math.random() * 100}%`,
+      size: Math.random() * 2.5 + 0.5,
+      opacity: Math.random() * 0.7 + 0.3,
+      delay: `${Math.random() * 5}s`,
+      duration: `${Math.random() * 3 + 2}s`,
+    }));
+  }, []);
+
+  const shootingStars = useMemo(() => {
+    return Array.from({ length: 2 }, (_, i) => ({
+      id: i,
+      top: `${Math.random() * 40 + 5}%`,
+      left: `${Math.random() * 60}%`,
+      delay: `${i * 5 + Math.random() * 3}s`,
+      angle: Math.random() * 15 + 30,
+      length: Math.random() * 60 + 50,
+      cycleDuration: `${10 + Math.random() * 4}s`,
+    }));
+  }, []);
+
   const navItems = [
     { id: 'home', icon: Home, label: 'Home' },
     { id: 'recent', icon: Clock, label: 'Recent' },
@@ -312,14 +336,53 @@ export default function Dashboard() {
           background: 'radial-gradient(circle, rgba(139,92,246,0.07) 0%, transparent 70%)',
           animation: 'drift2 5s infinite ease-in-out',
         }} />
-        {/* Grid overlay */}
+
+        {/* Twinkling stars */}
+        {stars.map((star) => (
+          <div key={star.id} style={{
+            position: 'absolute',
+            left: star.left,
+            top: star.top,
+            width: `${star.size}px`,
+            height: `${star.size}px`,
+            borderRadius: '50%',
+            background: star.size > 2
+              ? 'radial-gradient(circle, rgba(220,230,255,0.9), rgba(180,200,255,0.4))'
+              : 'rgba(200,220,255,0.8)',
+            boxShadow: star.size > 1.8
+              ? `0 0 ${star.size * 2}px rgba(180,200,255,0.4)`
+              : 'none',
+            opacity: star.opacity,
+            animation: `twinkle ${star.duration} ${star.delay} infinite ease-in-out`,
+          }} />
+        ))}
+
+        {/* Shooting stars */}
+        {shootingStars.map((s) => (
+          <div key={`shoot-${s.id}`} style={{
+            position: 'absolute',
+            top: s.top,
+            left: s.left,
+            width: `${s.length}px`,
+            height: '1.5px',
+            transform: `rotate(${s.angle}deg)`,
+            animation: `shootingStar ${s.cycleDuration} ${s.delay} infinite ease-out`,
+            opacity: 0,
+          }}>
+            <div style={{
+              width: '100%',
+              height: '100%',
+              background: 'linear-gradient(90deg, rgba(255,255,255,0.8), rgba(180,200,255,0.4) 40%, transparent)',
+              borderRadius: '1px',
+            }} />
+          </div>
+        ))}
+
+        {/* Dot overlay */}
         <div style={{
           position: 'absolute', inset: 0,
-          backgroundImage: `
-            linear-gradient(rgba(255,255,255,0.015) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(255,255,255,0.015) 1px, transparent 1px)
-          `,
-          backgroundSize: '60px 60px',
+          backgroundImage: 'radial-gradient(circle, rgba(200,220,255,0.15) 1px, transparent 1px)',
+          backgroundSize: '24px 24px',
         }} />
       </div>
 
@@ -340,19 +403,18 @@ export default function Dashboard() {
           borderBottom: '1px solid rgba(255,255,255,0.06)',
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div style={{
-              width: '36px', height: '36px',
-              borderRadius: '10px',
-              background: 'linear-gradient(135deg, #38bdf8, #818cf8)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: '16px', fontWeight: '700', color: 'white',
-              boxShadow: '0 0 20px rgba(56,189,248,0.25)',
-            }}>
-              B
-            </div>
+            <img
+              src="/logo.png"
+              alt="Dark Matters"
+              style={{
+                width: '36px', height: '36px',
+                borderRadius: '10px',
+                filter: 'drop-shadow(0 0 12px rgba(56,189,248,0.25))',
+              }}
+            />
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: '15px', fontWeight: '600', color: '#f0f0f5' }}>
-                The Board
+                Dark Matters
               </div>
               <div style={{ fontSize: '12px', color: '#64748b' }}>
                 {getUserName()}
@@ -495,7 +557,7 @@ export default function Dashboard() {
           <h2 style={{
             margin: 0, fontSize: '18px', fontWeight: '600', color: '#f0f0f5',
           }}>
-            Boards
+            Space Port
           </h2>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             {/* View toggle */}
@@ -1000,6 +1062,17 @@ export default function Dashboard() {
         @keyframes drift2 {
           0%, 100% { transform: translate(0, 0); }
           50% { transform: translate(-60px, -80px); }
+        }
+        @keyframes twinkle {
+          0%, 100% { opacity: 0.2; transform: scale(0.8); }
+          50% { opacity: 1; transform: scale(1.2); }
+        }
+        @keyframes shootingStar {
+          0% { opacity: 0; transform: translateX(0); }
+          1% { opacity: 0.7; transform: translateX(0); }
+          4% { opacity: 0.7; transform: translateX(120px); }
+          6% { opacity: 0; transform: translateX(200px); }
+          100% { opacity: 0; transform: translateX(200px); }
         }
         @keyframes spin {
           to { transform: rotate(360deg); }

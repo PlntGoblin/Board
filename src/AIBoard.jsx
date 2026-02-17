@@ -882,8 +882,42 @@ const AIBoard = () => {
 
   const handleWheel = (e) => {
     e.preventDefault();
-    const delta = e.deltaY > 0 ? 0.9 : 1.1;
-    setZoom(prev => Math.min(Math.max(prev * delta, 0.1), 3));
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (!rect) return;
+
+    // Pinch-to-zoom on trackpad fires as ctrlKey + wheel
+    if (e.ctrlKey) {
+      const sensitivity = 0.005;
+      const scaleFactor = 1 - e.deltaY * sensitivity;
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+
+      setZoom(prev => {
+        const newZoom = Math.min(Math.max(prev * scaleFactor, 0.1), 3);
+        const ratio = newZoom / prev;
+        setViewportOffset(off => ({
+          x: mouseX - ratio * (mouseX - off.x),
+          y: mouseY - ratio * (mouseY - off.y),
+        }));
+        return newZoom;
+      });
+      return;
+    }
+
+    // Regular scroll wheel zoom — gentle step
+    const delta = e.deltaY > 0 ? 0.97 : 1.03;
+    const mouseX = e.clientX - rect.left;
+    const mouseY = e.clientY - rect.top;
+
+    setZoom(prev => {
+      const newZoom = Math.min(Math.max(prev * delta, 0.1), 3);
+      const ratio = newZoom / prev;
+      setViewportOffset(off => ({
+        x: mouseX - ratio * (mouseX - off.x),
+        y: mouseY - ratio * (mouseY - off.y),
+      }));
+      return newZoom;
+    });
   };
 
   // Delete selected object(s)
@@ -1826,7 +1860,7 @@ const AIBoard = () => {
             position: 'relative',
           }}
         >
-          🧙‍♂️
+          🚀
           {/* Magic dust particles */}
           {isWizardHovered && (
             <>
@@ -1881,7 +1915,7 @@ const AIBoard = () => {
                 alignItems: 'center',
                 gap: '8px',
               }}>
-                <span>🧙‍♂️</span>
+                <span>🚀</span>
                 <span>AI Assistant</span>
               </div>
               <div style={{
@@ -2100,12 +2134,6 @@ const AIBoard = () => {
               }}
             >
               <StickyNote size={20} />
-              <div style={{
-                position: 'absolute', bottom: '4px', right: '4px',
-                width: '8px', height: '8px', borderRadius: '50%',
-                background: { yellow: '#FFF59D', pink: '#F48FB1', blue: '#81D4FA', green: '#A5D6A7', purple: '#CE93D8', orange: '#FFAB91' }[stickyColor] || '#FFF59D',
-                border: '1px solid rgba(0,0,0,0.2)',
-              }} />
             </button>
             {showStickyMenu && (
               <div style={{
@@ -2653,8 +2681,8 @@ const AIBoard = () => {
             left: 0,
             overflow: 'hidden',
             cursor: isPanning ? 'grabbing' : draggedId ? 'grabbing' : activeTool === 'hand' ? 'grab' : activeTool === 'select' ? 'default' : activeTool === 'eraser' ? 'none' : 'crosshair',
-            background: `linear-gradient(${theme.gridLine} 1px, transparent 1px), linear-gradient(90deg, ${theme.gridLine} 1px, transparent 1px)`,
-            backgroundSize: `${20 * zoom}px ${20 * zoom}px`,
+            background: `radial-gradient(circle, ${darkMode ? 'rgba(200,220,255,0.25)' : 'rgba(0,0,0,0.15)'} ${darkMode ? '1px' : '1px'}, transparent 1px)`,
+            backgroundSize: `${24 * zoom}px ${24 * zoom}px`,
             backgroundPosition: `${viewportOffset.x}px ${viewportOffset.y}px`
           }}
         >
