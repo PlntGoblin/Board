@@ -289,5 +289,3 @@ Built with:
 - [Lucide Icons](https://lucide.dev/) - Icon library
 
 ---
-
-**Made with ❤️ and AI**
