@@ -5,6 +5,7 @@ import { useAuth } from './hooks/useAuth';
 import { useBoard } from './hooks/useBoard';
 import { useAutoSave } from './hooks/useAutoSave';
 import { usePresence } from './hooks/usePresence';
+import { useBoardSync } from './hooks/useBoardSync';
 import PresenceBar from './components/PresenceBar';
 import ShareModal from './components/ShareModal';
 
@@ -15,7 +16,10 @@ const AIBoard = () => {
   const navigate = useNavigate();
   const { user, session } = useAuth();
   const { loadBoard, saveBoard } = useBoard();
-  const onlineUsers = usePresence(boardId, user);
+  const { onlineUsers, updateCursor } = usePresence(boardId, user);
+
+  // Real-time board sync
+  useBoardSync(boardId, boardObjects, setBoardObjects, user);
 
   const [boardObjects, setBoardObjects] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
@@ -453,6 +457,14 @@ const AIBoard = () => {
   };
 
   const handleMouseMove = (e) => {
+    // Update cursor position for other users
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (rect && updateCursor) {
+      const x = (e.clientX - rect.left - viewportOffset.x) / zoom;
+      const y = (e.clientY - rect.top - viewportOffset.y) / zoom;
+      updateCursor(x, y);
+    }
+
     if (isPanning) {
       setViewportOffset({
         x: e.clientX - panStart.x,
@@ -1259,6 +1271,46 @@ const AIBoard = () => {
           height: '5000px'
         }}>
           {boardObjects.map(renderObject)}
+
+          {/* Multiplayer Cursors */}
+          {onlineUsers
+            .filter(u => u.user_id !== user?.id && u.cursor)
+            .map((u, idx) => (
+              <div
+                key={u.user_id || idx}
+                style={{
+                  position: 'absolute',
+                  left: `${u.cursor.x}px`,
+                  top: `${u.cursor.y}px`,
+                  pointerEvents: 'none',
+                  zIndex: 10000,
+                  transform: 'translate(-2px, -2px)',
+                }}
+              >
+                {/* Cursor pointer */}
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" style={{ filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.3))' }}>
+                  <path
+                    d="M5.65376 12.3673L11.6126 5.48095C12.0744 4.93352 12.9426 5.26073 12.9426 5.98534L12.9426 10.1721C12.9426 10.5183 13.2221 10.7977 13.5683 10.7977L18.3479 10.7977C18.9989 10.7977 19.3072 11.6137 18.7889 12.0623L12.8301 18.9486C12.3683 19.496 11.5001 19.1688 11.5001 18.4442L11.5001 14.2575C11.5001 13.9113 11.2206 13.6318 10.8744 13.6318L6.09482 13.6318C5.44382 13.6318 5.13553 12.8158 5.65376 12.3673Z"
+                    fill={`hsl(${(idx * 137.5) % 360}, 70%, 60%)`}
+                  />
+                </svg>
+                {/* Name label */}
+                <div style={{
+                  marginTop: '4px',
+                  marginLeft: '12px',
+                  padding: '4px 8px',
+                  background: `hsl(${(idx * 137.5) % 360}, 70%, 60%)`,
+                  color: 'white',
+                  borderRadius: '4px',
+                  fontSize: '12px',
+                  fontWeight: '600',
+                  whiteSpace: 'nowrap',
+                  boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+                }}>
+                  {u.display_name || u.email?.split('@')[0] || 'User'}
+                </div>
+              </div>
+            ))}
         </div>
         </div>
       </div>
