@@ -55,13 +55,13 @@ app.post('/api/boards', authenticate, async (req, res) => {
 app.get('/api/boards', authenticate, async (req, res) => {
   const { data: owned, error: e1 } = await supabase
     .from('boards')
-    .select('id, title, updated_at, is_public')
+    .select('id, title, updated_at, is_public, board_data')
     .eq('owner_id', req.user.id)
     .order('updated_at', { ascending: false });
 
   const { data: collabs, error: e2 } = await supabase
     .from('board_collaborators')
-    .select('boards(id, title, updated_at, is_public)')
+    .select('boards(id, title, updated_at, is_public, board_data)')
     .eq('user_id', req.user.id);
 
   if (e1 || e2) return res.status(500).json({ error: 'Failed to fetch boards' });

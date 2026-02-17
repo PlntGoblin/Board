@@ -1,6 +1,6 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Send, Loader2, Trash2, MousePointer, Pen, StickyNote, Type, Square, Circle, ArrowRight, Minus, ArrowLeft, Share2, Cloud, CloudOff, Loader, ChevronsUp, ChevronUp, ChevronDown, ChevronsDown, Undo, Redo, Plus, Maximize2, Users } from 'lucide-react';
+import { Send, Loader2, Trash2, MousePointer, Hand, Pen, StickyNote, Type, Square, Circle, Triangle, Diamond, Hexagon, Star, ArrowRight, Minus, ArrowLeft, Share2, Cloud, CloudOff, Loader, ChevronsUp, ChevronUp, ChevronDown, ChevronsDown, Undo, Redo, Plus, Maximize2, Users, Shapes, Bold, AlignLeft, AlignCenter, Eraser, Moon, Sun } from 'lucide-react';
 import { useAuth } from './hooks/useAuth';
 import { useBoard } from './hooks/useBoard';
 import { useAutoSave } from './hooks/useAutoSave';
@@ -50,12 +50,156 @@ const AIBoard = () => {
   const [historyIndex, setHistoryIndex] = useState(-1);
   const isUndoRedo = useRef(false);
   const [showZoomMenu, setShowZoomMenu] = useState(false);
+  const [stickyColor, setStickyColor] = useState('yellow');
+  const [shapeType, setShapeType] = useState('rectangle');
+  const [showStickyMenu, setShowStickyMenu] = useState(false);
+  const [showShapeMenu, setShowShapeMenu] = useState(false);
+  const [showConfetti, setShowConfetti] = useState(false);
+  const [isErasing, setIsErasing] = useState(false);
+  const [eraserPos, setEraserPos] = useState(null);
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [selectionBox, setSelectionBox] = useState(null);
+  const [darkMode, setDarkMode] = useState(() => localStorage.getItem('boardDarkMode') !== 'false');
+
+  const toggleDarkMode = useCallback(() => {
+    setDarkMode(prev => {
+      const next = !prev;
+      localStorage.setItem('boardDarkMode', String(next));
+      return next;
+    });
+  }, []);
+
+  const theme = darkMode ? {
+    bg: '#1a1a2e',
+    surface: '#16213e',
+    surfaceHover: '#1a2744',
+    border: '#2a3a5c',
+    borderLight: '#243352',
+    text: '#e0e0f0',
+    textSecondary: '#8892b0',
+    textMuted: '#5a6688',
+    gridLine: '#243352',
+    divider: '#2a3a5c',
+    canvasBg: '#0f1626',
+    inputFocusBg: '#1a2744',
+  } : {
+    bg: '#f5f5f5',
+    surface: 'white',
+    surfaceHover: '#f5f5f5',
+    border: '#e0e0e0',
+    borderLight: '#eee',
+    text: '#333',
+    textSecondary: '#666',
+    textMuted: '#999',
+    gridLine: '#e8e8e8',
+    divider: '#e0e0e0',
+    canvasBg: '#f5f5f5',
+    inputFocusBg: '#f5f5f5',
+  };
 
   const canvasRef = useRef(null);
   const nextId = useRef(1);
+  const prevUserCount = useRef(0);
+
+  const pointToSegmentDist = (px, py, x1, y1, x2, y2) => {
+    const dx = x2 - x1, dy = y2 - y1;
+    const lenSq = dx * dx + dy * dy;
+    if (lenSq === 0) return Math.hypot(px - x1, py - y1);
+    const t = Math.max(0, Math.min(1, ((px - x1) * dx + (py - y1) * dy) / lenSq));
+    return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
+  };
+
+  const eraseAtPoint = (x, y) => {
+    const threshold = 12;
+    setBoardObjects(prev => {
+      const result = [];
+      for (const obj of prev) {
+        if (obj.type === 'path' && obj.points?.length >= 2) {
+          // Find which segments are hit
+          const hitSegments = new Set();
+          for (let i = 0; i < obj.points.length - 1; i++) {
+            if (pointToSegmentDist(x, y, obj.points[i].x, obj.points[i].y, obj.points[i + 1].x, obj.points[i + 1].y) < threshold) {
+              hitSegments.add(i);
+            }
+          }
+          if (hitSegments.size === 0) {
+            result.push(obj);
+          } else {
+            // Split path into segments that weren't erased
+            let run = [];
+            for (let i = 0; i < obj.points.length; i++) {
+              const segBefore = i - 1;
+              const segAfter = i;
+              const beforeHit = segBefore >= 0 && hitSegments.has(segBefore);
+              const afterHit = segAfter < obj.points.length - 1 && hitSegments.has(segAfter);
+
+              if (beforeHit && afterHit) {
+                // Point is between two erased segments, skip it
+                continue;
+              }
+              if (beforeHit) {
+                // Ending an erased zone, start a new run
+                if (run.length >= 2) {
+                  result.push({ ...obj, id: nextId.current++, points: run });
+                }
+                run = [obj.points[i]];
+              } else if (afterHit) {
+                // About to enter an erased zone, finish this run
+                run.push(obj.points[i]);
+                if (run.length >= 2) {
+                  result.push({ ...obj, id: nextId.current++, points: run });
+                }
+                run = [];
+              } else {
+                run.push(obj.points[i]);
+              }
+            }
+            if (run.length >= 2) {
+              result.push({ ...obj, id: nextId.current++, points: run });
+            }
+          }
+        } else if (obj.type === 'line' || obj.type === 'arrow') {
+          const x1 = obj.x1, y1 = obj.y1, x2 = obj.x2, y2 = obj.y2;
+          if (pointToSegmentDist(x, y, x1, y1, x2, y2) >= threshold) {
+            result.push(obj);
+          }
+        } else {
+          result.push(obj);
+        }
+      }
+      return result;
+    });
+  };
+
+  const getObjBounds = (obj) => {
+    if (obj.type === 'path' && obj.points?.length) {
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for (const p of obj.points) { minX = Math.min(minX, p.x); minY = Math.min(minY, p.y); maxX = Math.max(maxX, p.x); maxY = Math.max(maxY, p.y); }
+      return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+    }
+    if (obj.type === 'line' || obj.type === 'arrow') {
+      const x = Math.min(obj.x1, obj.x2), y = Math.min(obj.y1, obj.y2);
+      return { x, y, w: Math.abs(obj.x2 - obj.x1), h: Math.abs(obj.y2 - obj.y1) };
+    }
+    return { x: obj.x || 0, y: obj.y || 0, w: obj.width || 100, h: obj.height || 100 };
+  };
+
+  const boxesIntersect = (a, b) => {
+    return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+  };
 
   // Real-time board sync
   useBoardSync(boardId, boardObjects, setBoardObjects, user);
+
+  // Confetti when a second person joins
+  useEffect(() => {
+    const uniqueCount = new Set(onlineUsers.map(u => u.user_id)).size;
+    if (prevUserCount.current <= 1 && uniqueCount >= 2) {
+      setShowConfetti(true);
+      setTimeout(() => setShowConfetti(false), 4000);
+    }
+    prevUserCount.current = uniqueCount;
+  }, [onlineUsers]);
 
   // Auto-save
   const saveStatus = useAutoSave(boardId, boardObjects, nextId.current, boardLoaded ? saveBoard : null);
@@ -103,8 +247,31 @@ const AIBoard = () => {
           const data = typeof board.board_data === 'string'
             ? JSON.parse(board.board_data)
             : board.board_data;
-          setBoardObjects(data.objects || []);
-          nextId.current = data.nextId || (data.objects?.length ? Math.max(...data.objects.map(o => o.id)) + 1 : 1);
+          const objs = data.objects || [];
+          setBoardObjects(objs);
+          nextId.current = data.nextId || (objs.length ? Math.max(...objs.map(o => o.id)) + 1 : 1);
+
+          // Center viewport on content
+          if (objs.length > 0) {
+            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+            for (const obj of objs) {
+              const b = getObjBounds(obj);
+              minX = Math.min(minX, b.x);
+              minY = Math.min(minY, b.y);
+              maxX = Math.max(maxX, b.x + b.w);
+              maxY = Math.max(maxY, b.y + b.h);
+            }
+            const contentW = maxX - minX;
+            const contentH = maxY - minY;
+            const centerX = minX + contentW / 2;
+            const centerY = minY + contentH / 2;
+            const vw = window.innerWidth - 80;
+            const vh = window.innerHeight - 60;
+            setViewportOffset({
+              x: vw / 2 - centerX,
+              y: vh / 2 - centerY,
+            });
+          }
         }
         setBoardLoaded(true);
       } catch (err) {
@@ -481,7 +648,7 @@ const AIBoard = () => {
 
   // Canvas interaction handlers
   const handleMouseDown = (e, objId = null) => {
-    if (e.button === 1 || (e.button === 0 && e.shiftKey)) {
+    if (e.button === 1 || (e.button === 0 && e.shiftKey) || (e.button === 0 && activeTool === 'hand')) {
       setIsPanning(true);
       setPanStart({ x: e.clientX - viewportOffset.x, y: e.clientY - viewportOffset.y });
       e.preventDefault();
@@ -489,8 +656,31 @@ const AIBoard = () => {
     }
 
     if (objId) {
+      const isMultiKey = e.metaKey || e.ctrlKey;
+      if (isMultiKey) {
+        // Toggle this object in/out of multi-selection
+        setSelectedIds(prev => prev.includes(objId) ? prev.filter(id => id !== objId) : [...prev, objId]);
+        setSelectedId(prev => prev === objId ? null : objId);
+        e.stopPropagation();
+        return;
+      }
+      // If clicking an object that's already in a multi-selection, drag all of them
+      if (selectedIds.includes(objId) && selectedIds.length > 1) {
+        setDraggedId(objId);
+        const obj = boardObjects.find(o => o.id === objId);
+        if (obj) {
+          setDragOffset({
+            x: (e.clientX - viewportOffset.x) / zoom - obj.x,
+            y: (e.clientY - viewportOffset.y) / zoom - obj.y
+          });
+        }
+        e.stopPropagation();
+        return;
+      }
+      // Single click without modifier — single select
       setDraggedId(objId);
       setSelectedId(objId);
+      setSelectedIds([objId]);
       const obj = boardObjects.find(o => o.id === objId);
       if (obj) {
         setDragOffset({
@@ -501,16 +691,30 @@ const AIBoard = () => {
       e.stopPropagation();
     } else {
       setSelectedId(null);
+      setSelectedIds([]);
+
+      // Start selection box when in select mode on empty canvas
+      if (activeTool === 'select') {
+        const rect = canvasRef.current?.getBoundingClientRect();
+        if (rect) {
+          const x = (e.clientX - rect.left - viewportOffset.x) / zoom;
+          const y = (e.clientY - rect.top - viewportOffset.y) / zoom;
+          setSelectionBox({ startX: x, startY: y, endX: x, endY: y });
+        }
+      }
 
       // Handle drawing tools
       const rect = canvasRef.current?.getBoundingClientRect();
-      if (rect && (activeTool === 'pen' || activeTool === 'arrow' || activeTool === 'line')) {
+      if (rect && (activeTool === 'pen' || activeTool === 'eraser' || activeTool === 'arrow' || activeTool === 'line')) {
         const x = (e.clientX - rect.left - viewportOffset.x) / zoom;
         const y = (e.clientY - rect.top - viewportOffset.y) / zoom;
 
         if (activeTool === 'pen') {
           setIsDrawing(true);
           setCurrentPath([{ x, y }]);
+        } else if (activeTool === 'eraser') {
+          setIsErasing(true);
+          eraseAtPoint(x, y);
         } else if (activeTool === 'arrow' || activeTool === 'line') {
           setLineStart({ x, y });
         }
@@ -525,6 +729,12 @@ const AIBoard = () => {
       const x = (e.clientX - rect.left - viewportOffset.x) / zoom;
       const y = (e.clientY - rect.top - viewportOffset.y) / zoom;
       updateCursor(x, y);
+    }
+
+    if (activeTool === 'eraser') {
+      setEraserPos({ x: e.clientX, y: e.clientY });
+    } else if (eraserPos) {
+      setEraserPos(null);
     }
 
     if (isPanning) {
@@ -543,6 +753,14 @@ const AIBoard = () => {
       return;
     }
 
+    // Handle eraser
+    if (isErasing && activeTool === 'eraser' && rect) {
+      const x = (e.clientX - rect.left - viewportOffset.x) / zoom;
+      const y = (e.clientY - rect.top - viewportOffset.y) / zoom;
+      eraseAtPoint(x, y);
+      return;
+    }
+
     if (isResizing && selectedId) {
       const mouseX = (e.clientX - viewportOffset.x) / zoom;
       const mouseY = (e.clientY - viewportOffset.y) / zoom;
@@ -558,17 +776,64 @@ const AIBoard = () => {
       return;
     }
 
+    // Selection box dragging
+    if (selectionBox && activeTool === 'select' && !draggedId && rect) {
+      const x = (e.clientX - rect.left - viewportOffset.x) / zoom;
+      const y = (e.clientY - rect.top - viewportOffset.y) / zoom;
+      setSelectionBox(prev => prev ? { ...prev, endX: x, endY: y } : null);
+      return;
+    }
+
     if (draggedId) {
       const newX = (e.clientX - viewportOffset.x) / zoom - dragOffset.x;
       const newY = (e.clientY - viewportOffset.y) / zoom - dragOffset.y;
 
-      setBoardObjects(prev => prev.map(obj =>
-        obj.id === draggedId ? { ...obj, x: newX, y: newY } : obj
-      ));
+      // Multi-drag: move all selected objects together
+      if (selectedIds.length > 1 && selectedIds.includes(draggedId)) {
+        const draggedObj = boardObjects.find(o => o.id === draggedId);
+        if (draggedObj) {
+          const dx = newX - draggedObj.x;
+          const dy = newY - draggedObj.y;
+          setBoardObjects(prev => prev.map(obj => {
+            if (!selectedIds.includes(obj.id)) return obj;
+            if (obj.type === 'line' || obj.type === 'arrow') {
+              return { ...obj, x1: obj.x1 + dx, y1: obj.y1 + dy, x2: obj.x2 + dx, y2: obj.y2 + dy };
+            }
+            if (obj.type === 'path') {
+              return { ...obj, points: obj.points.map(p => ({ x: p.x + dx, y: p.y + dy })) };
+            }
+            return { ...obj, x: obj.x + dx, y: obj.y + dy };
+          }));
+        }
+      } else {
+        setBoardObjects(prev => prev.map(obj =>
+          obj.id === draggedId ? { ...obj, x: newX, y: newY } : obj
+        ));
+      }
     }
   };
 
   const handleMouseUp = (e) => {
+    // Finish selection box
+    if (selectionBox) {
+      const sx = Math.min(selectionBox.startX, selectionBox.endX);
+      const sy = Math.min(selectionBox.startY, selectionBox.endY);
+      const sw = Math.abs(selectionBox.endX - selectionBox.startX);
+      const sh = Math.abs(selectionBox.endY - selectionBox.startY);
+      if (sw > 5 || sh > 5) {
+        const box = { x: sx, y: sy, w: sw, h: sh };
+        const hits = boardObjects.filter(obj => boxesIntersect(getObjBounds(obj), box)).map(obj => obj.id);
+        setSelectedIds(hits);
+        setSelectedId(hits.length === 1 ? hits[0] : null);
+      }
+      setSelectionBox(null);
+    }
+
+    // Finish erasing
+    if (isErasing) {
+      setIsErasing(false);
+    }
+
     // Finish pen drawing
     if (isDrawing && activeTool === 'pen' && currentPath.length > 1) {
       const newPath = {
@@ -619,13 +884,18 @@ const AIBoard = () => {
     setZoom(prev => Math.min(Math.max(prev * delta, 0.1), 3));
   };
 
-  // Delete selected object
+  // Delete selected object(s)
   const handleDelete = useCallback(() => {
-    if (selectedId) {
+    if (selectedIds.length > 0) {
+      const idsToRemove = new Set(selectedIds);
+      setBoardObjects(prev => prev.filter(obj => !idsToRemove.has(obj.id)));
+      setSelectedId(null);
+      setSelectedIds([]);
+    } else if (selectedId) {
       setBoardObjects(prev => prev.filter(obj => obj.id !== selectedId));
       setSelectedId(null);
     }
-  }, [selectedId]);
+  }, [selectedId, selectedIds]);
 
   // Layering functions
   const bringToFront = useCallback(() => {
@@ -671,7 +941,7 @@ const AIBoard = () => {
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e) => {
-      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedId) {
+      if ((e.key === 'Delete' || e.key === 'Backspace') && (selectedId || selectedIds.length > 0)) {
         e.preventDefault();
         handleDelete();
       }
@@ -687,7 +957,7 @@ const AIBoard = () => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedId, handleDelete, handleUndo, handleRedo]);
+  }, [selectedId, selectedIds, handleDelete, handleUndo, handleRedo]);
 
   // Close zoom menu on outside click
   useEffect(() => {
@@ -699,7 +969,9 @@ const AIBoard = () => {
 
   // Tool handlers
   const handleCanvasClick = (e) => {
-    if (activeTool === 'select' || activeTool === 'pen' || activeTool === 'arrow' || activeTool === 'line' || draggedId || isPanning) return;
+    setShowStickyMenu(false);
+    setShowShapeMenu(false);
+    if (activeTool === 'select' || activeTool === 'hand' || activeTool === 'pen' || activeTool === 'eraser' || activeTool === 'arrow' || activeTool === 'line' || draggedId || isPanning) return;
 
     const rect = canvasRef.current.getBoundingClientRect();
     const x = (e.clientX - rect.left - viewportOffset.x) / zoom;
@@ -713,10 +985,12 @@ const AIBoard = () => {
         y,
         width: 200,
         height: 200,
-        color: 'yellow',
-        text: 'New note...'
+        color: stickyColor,
+        text: ''
       };
       setBoardObjects(prev => [...prev, newNote]);
+      setEditingId(newNote.id);
+      setEditingText('');
       setActiveTool('select');
     } else if (activeTool === 'text') {
       const newText = {
@@ -726,33 +1000,22 @@ const AIBoard = () => {
         y,
         width: 200,
         height: 50,
-        text: 'Type here...'
+        text: ''
       };
       setBoardObjects(prev => [...prev, newText]);
+      setEditingId(newText.id);
+      setEditingText('');
       setActiveTool('select');
-    } else if (activeTool === 'rectangle') {
+    } else if (activeTool === 'shape') {
       const newShape = {
         id: nextId.current++,
         type: 'shape',
-        shapeType: 'rectangle',
+        shapeType: shapeType,
         x,
         y,
-        width: 150,
-        height: 100,
+        width: shapeType === 'circle' ? 120 : 150,
+        height: shapeType === 'circle' ? 120 : shapeType === 'triangle' ? 130 : 100,
         color: '#81D4FA'
-      };
-      setBoardObjects(prev => [...prev, newShape]);
-      setActiveTool('select');
-    } else if (activeTool === 'circle') {
-      const newShape = {
-        id: nextId.current++,
-        type: 'shape',
-        shapeType: 'circle',
-        x,
-        y,
-        width: 120,
-        height: 120,
-        color: '#A5D6A7'
       };
       setBoardObjects(prev => [...prev, newShape]);
       setActiveTool('select');
@@ -773,76 +1036,284 @@ const AIBoard = () => {
     return colors[color] || color;
   };
 
+  const updateStickyProp = (id, prop, value) => {
+    setBoardObjects(prev => prev.map(o => o.id === id ? { ...o, [prop]: value } : o));
+  };
+
+  const STICKY_COLORS = ['yellow', 'pink', 'blue', 'green', 'purple', 'orange'];
+  const FONT_SIZES = [
+    { label: 'S', value: 13 },
+    { label: 'M', value: 16 },
+    { label: 'L', value: 22 },
+  ];
+
   // Render board object
   const renderObject = (obj) => {
-    const isSelected = obj.id === selectedId;
+    const isSelected = obj.id === selectedId || selectedIds.includes(obj.id);
     const isEditing = obj.id === editingId;
 
     if (obj.type === 'stickyNote') {
+      const noteFontSize = obj.fontSize || 14;
+      const noteBold = obj.fontWeight === 'bold';
+      const noteAlign = obj.textAlign || 'left';
+      const showToolbar = isSelected || isEditing;
+
       return (
-        <div
-          key={obj.id}
-          onMouseDown={(e) => {
-            if (!isEditing) handleMouseDown(e, obj.id);
-          }}
-          onDoubleClick={(e) => {
-            e.stopPropagation();
-            setEditingId(obj.id);
-            setEditingText(obj.text);
-          }}
-          style={{
-            position: 'absolute',
-            left: obj.x,
-            top: obj.y,
-            width: obj.width,
-            height: obj.height,
-            backgroundColor: getColor(obj.color),
-            border: isSelected ? '3px solid #2196F3' : '2px solid rgba(0,0,0,0.1)',
-            borderRadius: '4px',
-            padding: '16px',
-            cursor: isEditing ? 'text' : 'move',
-            boxShadow: '0 4px 8px rgba(0,0,0,0.1)',
-            fontSize: '14px',
-            overflow: 'auto',
-            userSelect: isEditing ? 'text' : 'none'
-          }}
-        >
-          {isEditing ? (
-            <textarea
-              autoFocus
-              value={editingText}
-              onChange={(e) => setEditingText(e.target.value)}
-              onBlur={() => {
-                setBoardObjects(prev => prev.map(o =>
-                  o.id === obj.id ? { ...o, text: editingText } : o
-                ));
-                setEditingId(null);
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Escape') {
-                  setEditingId(null);
-                }
-              }}
+        <div key={obj.id} style={{ position: 'absolute', left: obj.x, top: obj.y }}>
+          {/* Sticky toolbar */}
+          {showToolbar && (
+            <div
+              onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); }}
               style={{
-                width: '100%',
-                height: '100%',
-                border: 'none',
-                outline: 'none',
-                background: 'transparent',
-                fontSize: '14px',
-                fontFamily: 'inherit',
-                resize: 'none',
-                color: 'inherit'
+                position: 'absolute',
+                bottom: '100%',
+                left: '50%',
+                transform: 'translateX(-50%)',
+                marginBottom: '8px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '2px',
+                background: 'rgba(30,30,40,0.95)',
+                backdropFilter: 'blur(12px)',
+                border: '1px solid rgba(255,255,255,0.12)',
+                borderRadius: '10px',
+                padding: '4px 6px',
+                boxShadow: '0 4px 16px rgba(0,0,0,0.3)',
+                whiteSpace: 'nowrap',
+                zIndex: 100,
               }}
-            />
-          ) : (
-            obj.text
+            >
+              {/* Font size buttons */}
+              {FONT_SIZES.map(fs => (
+                <button
+                  key={fs.label}
+                  onClick={() => updateStickyProp(obj.id, 'fontSize', fs.value)}
+                  style={{
+                    width: '26px', height: '26px',
+                    border: 'none', borderRadius: '6px',
+                    background: noteFontSize === fs.value ? 'rgba(56,189,248,0.2)' : 'transparent',
+                    color: noteFontSize === fs.value ? '#38bdf8' : '#94a3b8',
+                    fontSize: '11px', fontWeight: '700',
+                    cursor: 'pointer', display: 'flex',
+                    alignItems: 'center', justifyContent: 'center',
+                    transition: 'all 0.15s',
+                  }}
+                  title={`Font size ${fs.label}`}
+                >
+                  {fs.label}
+                </button>
+              ))}
+
+              {/* Divider */}
+              <div style={{ width: '1px', height: '18px', background: 'rgba(255,255,255,0.1)', margin: '0 4px' }} />
+
+              {/* Bold */}
+              <button
+                onClick={() => updateStickyProp(obj.id, 'fontWeight', noteBold ? 'normal' : 'bold')}
+                style={{
+                  width: '26px', height: '26px',
+                  border: 'none', borderRadius: '6px',
+                  background: noteBold ? 'rgba(56,189,248,0.2)' : 'transparent',
+                  color: noteBold ? '#38bdf8' : '#94a3b8',
+                  cursor: 'pointer', display: 'flex',
+                  alignItems: 'center', justifyContent: 'center',
+                  transition: 'all 0.15s',
+                }}
+                title="Bold"
+              >
+                <Bold size={13} />
+              </button>
+
+              {/* Align left */}
+              <button
+                onClick={() => updateStickyProp(obj.id, 'textAlign', 'left')}
+                style={{
+                  width: '26px', height: '26px',
+                  border: 'none', borderRadius: '6px',
+                  background: noteAlign === 'left' ? 'rgba(56,189,248,0.2)' : 'transparent',
+                  color: noteAlign === 'left' ? '#38bdf8' : '#94a3b8',
+                  cursor: 'pointer', display: 'flex',
+                  alignItems: 'center', justifyContent: 'center',
+                  transition: 'all 0.15s',
+                }}
+                title="Align left"
+              >
+                <AlignLeft size={13} />
+              </button>
+
+              {/* Align center */}
+              <button
+                onClick={() => updateStickyProp(obj.id, 'textAlign', 'center')}
+                style={{
+                  width: '26px', height: '26px',
+                  border: 'none', borderRadius: '6px',
+                  background: noteAlign === 'center' ? 'rgba(56,189,248,0.2)' : 'transparent',
+                  color: noteAlign === 'center' ? '#38bdf8' : '#94a3b8',
+                  cursor: 'pointer', display: 'flex',
+                  alignItems: 'center', justifyContent: 'center',
+                  transition: 'all 0.15s',
+                }}
+                title="Align center"
+              >
+                <AlignCenter size={13} />
+              </button>
+
+              {/* Divider */}
+              <div style={{ width: '1px', height: '18px', background: 'rgba(255,255,255,0.1)', margin: '0 4px' }} />
+
+              {/* Color dots */}
+              {STICKY_COLORS.map(c => (
+                <button
+                  key={c}
+                  onClick={() => updateStickyProp(obj.id, 'color', c)}
+                  style={{
+                    width: '18px', height: '18px',
+                    borderRadius: '50%',
+                    border: obj.color === c ? '2px solid #fff' : '2px solid transparent',
+                    background: getColor(c),
+                    cursor: 'pointer',
+                    padding: 0,
+                    boxShadow: obj.color === c ? '0 0 6px rgba(255,255,255,0.3)' : 'none',
+                    transition: 'all 0.15s',
+                  }}
+                  title={c}
+                />
+              ))}
+            </div>
           )}
+
+          {/* Sticky note body */}
+          <div
+            onMouseDown={(e) => {
+              if (!isEditing) handleMouseDown(e, obj.id);
+            }}
+            onDoubleClick={(e) => {
+              e.stopPropagation();
+              if (!isEditing) {
+                setEditingId(obj.id);
+                setEditingText(obj.text);
+              }
+            }}
+            style={{
+              width: obj.width,
+              height: obj.height,
+              backgroundColor: getColor(obj.color),
+              border: isSelected ? '3px solid #2196F3' : '1px solid rgba(0,0,0,0.08)',
+              borderRadius: '2px 2px 4px 4px',
+              padding: '16px',
+              cursor: isEditing ? 'text' : 'move',
+              boxShadow: '0 1px 1px rgba(0,0,0,0.04), 0 4px 6px rgba(0,0,0,0.06), 0 10px 14px -4px rgba(0,0,0,0.1), 2px 12px 16px -2px rgba(0,0,0,0.08)',
+              fontSize: `${noteFontSize}px`,
+              fontWeight: obj.fontWeight || 'normal',
+              textAlign: noteAlign,
+              overflow: 'auto',
+              userSelect: isEditing ? 'text' : 'none',
+              boxSizing: 'border-box',
+              position: 'relative',
+            }}>
+            {/* Top tape/pin strip */}
+            <div style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              height: '6px',
+              background: 'linear-gradient(180deg, rgba(0,0,0,0.06) 0%, transparent 100%)',
+              borderRadius: '2px 2px 0 0',
+              pointerEvents: 'none',
+            }} />
+            {isEditing ? (
+              <textarea
+                autoFocus
+                value={editingText}
+                onChange={(e) => setEditingText(e.target.value)}
+                onBlur={() => {
+                  setBoardObjects(prev => prev.map(o =>
+                    o.id === obj.id ? { ...o, text: editingText } : o
+                  ));
+                  setEditingId(null);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') {
+                    setEditingId(null);
+                  }
+                }}
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  border: 'none',
+                  outline: 'none',
+                  background: 'transparent',
+                  fontSize: 'inherit',
+                  fontWeight: 'inherit',
+                  textAlign: 'inherit',
+                  fontFamily: 'inherit',
+                  resize: 'none',
+                  color: 'inherit',
+                }}
+              />
+            ) : (
+              <span style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{obj.text}</span>
+            )}
+          </div>
         </div>
       );
     }
     
     if (obj.type === 'shape') {
+      const w = obj.width || 100;
+      const h = obj.height || 100;
+      const fillColor = getColor(obj.color);
+      const userStrokeW = obj.strokeWidth ?? 2;
+      const strokeColor = isSelected ? '#2196F3' : (obj.strokeColor || 'rgba(0,0,0,0.3)');
+      const strokeW = isSelected ? Math.max(userStrokeW, 3) : userStrokeW;
+
+      const SHAPE_COLORS = [
+        { name: 'yellow', hex: '#FFF59D' },
+        { name: 'pink', hex: '#F48FB1' },
+        { name: 'blue', hex: '#81D4FA' },
+        { name: 'green', hex: '#A5D6A7' },
+        { name: 'purple', hex: '#CE93D8' },
+        { name: 'orange', hex: '#FFAB91' },
+        { name: 'white', hex: '#FFFFFF' },
+      ];
+      const STROKE_SIZES = [
+        { label: '1', value: 1 },
+        { label: '2', value: 2 },
+        { label: '4', value: 4 },
+        { label: '6', value: 6 },
+      ];
+
+      const getShapePath = () => {
+        switch (obj.shapeType) {
+          case 'circle':
+            return <ellipse cx={w/2} cy={h/2} rx={w/2 - 2} ry={h/2 - 2} fill={fillColor} stroke={strokeColor} strokeWidth={strokeW} />;
+          case 'triangle':
+            return <polygon points={`${w/2},2 ${w-2},${h-2} 2,${h-2}`} fill={fillColor} stroke={strokeColor} strokeWidth={strokeW} strokeLinejoin="round" />;
+          case 'diamond':
+            return <polygon points={`${w/2},2 ${w-2},${h/2} ${w/2},${h-2} 2,${h/2}`} fill={fillColor} stroke={strokeColor} strokeWidth={strokeW} strokeLinejoin="round" />;
+          case 'hexagon': {
+            const cx = w/2, cy = h/2, rx = w/2 - 2, ry = h/2 - 2;
+            const pts = Array.from({length: 6}, (_, i) => {
+              const a = Math.PI / 3 * i - Math.PI / 2;
+              return `${cx + rx * Math.cos(a)},${cy + ry * Math.sin(a)}`;
+            }).join(' ');
+            return <polygon points={pts} fill={fillColor} stroke={strokeColor} strokeWidth={strokeW} strokeLinejoin="round" />;
+          }
+          case 'star': {
+            const cx = w/2, cy = h/2, outer = Math.min(w, h)/2 - 2, inner = outer * 0.4;
+            const pts = Array.from({length: 10}, (_, i) => {
+              const a = Math.PI / 5 * i - Math.PI / 2;
+              const r = i % 2 === 0 ? outer : inner;
+              return `${cx + r * Math.cos(a)},${cy + r * Math.sin(a)}`;
+            }).join(' ');
+            return <polygon points={pts} fill={fillColor} stroke={strokeColor} strokeWidth={strokeW} strokeLinejoin="round" />;
+          }
+          default: // rectangle
+            return <rect x={1} y={1} width={w - 2} height={h - 2} rx={4} fill={fillColor} stroke={strokeColor} strokeWidth={strokeW} />;
+        }
+      };
+
       return (
         <div
           key={obj.id}
@@ -850,21 +1321,90 @@ const AIBoard = () => {
             position: 'absolute',
             left: obj.x,
             top: obj.y,
-            width: obj.width,
-            height: obj.height
+            width: w,
+            height: h
           }}
         >
-          <div
+          {/* Shape toolbar */}
+          {isSelected && (
+            <div
+              onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); }}
+              style={{
+                position: 'absolute',
+                bottom: '100%',
+                left: '50%',
+                transform: 'translateX(-50%)',
+                marginBottom: '8px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '2px',
+                background: 'rgba(30,30,40,0.95)',
+                backdropFilter: 'blur(12px)',
+                border: '1px solid rgba(255,255,255,0.12)',
+                borderRadius: '10px',
+                padding: '4px 6px',
+                boxShadow: '0 4px 16px rgba(0,0,0,0.3)',
+                whiteSpace: 'nowrap',
+                zIndex: 100,
+              }}
+            >
+              {/* Color dots */}
+              {SHAPE_COLORS.map(c => (
+                <button
+                  key={c.name}
+                  onClick={() => updateStickyProp(obj.id, 'color', c.name)}
+                  style={{
+                    width: '18px', height: '18px',
+                    borderRadius: '50%',
+                    border: obj.color === c.name ? '2px solid #fff' : '2px solid transparent',
+                    background: c.hex,
+                    cursor: 'pointer',
+                    padding: 0,
+                    boxShadow: obj.color === c.name ? '0 0 6px rgba(255,255,255,0.3)' : 'none',
+                    transition: 'all 0.15s',
+                  }}
+                  title={c.name}
+                />
+              ))}
+
+              {/* Divider */}
+              <div style={{ width: '1px', height: '18px', background: 'rgba(255,255,255,0.1)', margin: '0 4px' }} />
+
+              {/* Stroke thickness */}
+              {STROKE_SIZES.map(s => (
+                <button
+                  key={s.value}
+                  onClick={() => updateStickyProp(obj.id, 'strokeWidth', s.value)}
+                  style={{
+                    width: '26px', height: '26px',
+                    border: 'none', borderRadius: '6px',
+                    background: userStrokeW === s.value ? 'rgba(56,189,248,0.2)' : 'transparent',
+                    color: userStrokeW === s.value ? '#38bdf8' : '#94a3b8',
+                    cursor: 'pointer', display: 'flex',
+                    alignItems: 'center', justifyContent: 'center',
+                    transition: 'all 0.15s',
+                    padding: 0,
+                  }}
+                  title={`Stroke ${s.value}px`}
+                >
+                  <div style={{
+                    width: '14px',
+                    height: `${Math.max(s.value, 1)}px`,
+                    background: userStrokeW === s.value ? '#38bdf8' : '#94a3b8',
+                    borderRadius: '1px',
+                  }} />
+                </button>
+              ))}
+            </div>
+          )}
+
+          <svg
+            width={w} height={h}
             onMouseDown={(e) => handleMouseDown(e, obj.id)}
-            style={{
-              width: '100%',
-              height: '100%',
-              backgroundColor: getColor(obj.color),
-              border: isSelected ? '3px solid #2196F3' : '2px solid rgba(0,0,0,0.3)',
-              borderRadius: obj.shapeType === 'circle' ? '50%' : '4px',
-              cursor: 'move'
-            }}
-          />
+            style={{ cursor: 'move', display: 'block' }}
+          >
+            {getShapePath()}
+          </svg>
           {isSelected && (
             <div
               onMouseDown={(e) => {
@@ -899,8 +1439,10 @@ const AIBoard = () => {
           }}
           onDoubleClick={(e) => {
             e.stopPropagation();
-            setEditingId(obj.id);
-            setEditingText(obj.text);
+            if (!isEditing) {
+              setEditingId(obj.id);
+              setEditingText(obj.text);
+            }
           }}
           style={{
             position: 'absolute',
@@ -913,7 +1455,7 @@ const AIBoard = () => {
             cursor: isEditing ? 'text' : 'move',
             fontSize: '16px',
             fontFamily: 'system-ui, sans-serif',
-            color: '#333',
+            color: theme.text,
             userSelect: isEditing ? 'text' : 'none',
             whiteSpace: 'pre-wrap'
           }}
@@ -942,7 +1484,7 @@ const AIBoard = () => {
                 background: 'transparent',
                 fontSize: '16px',
                 fontFamily: 'system-ui, sans-serif',
-                color: '#333'
+                color: theme.text
               }}
             />
           ) : (
@@ -963,7 +1505,7 @@ const AIBoard = () => {
             top: obj.y,
             width: obj.width,
             height: obj.height,
-            border: isSelected ? '3px solid #2196F3' : '2px dashed #666',
+            border: isSelected ? '3px solid #2196F3' : `2px dashed ${theme.textSecondary}`,
             borderRadius: '8px',
             cursor: 'move',
             backgroundColor: 'rgba(255,255,255,0.05)'
@@ -1103,12 +1645,12 @@ const AIBoard = () => {
   };
 
   return (
-    <div style={{ width: '100vw', height: '100vh', display: 'flex', flexDirection: 'column', background: '#f5f5f5' }}>
+    <div style={{ width: '100vw', height: '100vh', display: 'flex', flexDirection: 'column', background: theme.bg }}>
       {/* Board Header */}
       <div style={{
         padding: '10px 16px',
-        background: 'white',
-        borderBottom: '1px solid #e0e0e0',
+        background: theme.surface,
+        borderBottom: `1px solid ${theme.border}`,
         display: 'flex',
         alignItems: 'center',
         gap: '12px',
@@ -1121,10 +1663,10 @@ const AIBoard = () => {
             gap: '4px',
             padding: '6px 10px',
             background: 'none',
-            border: '1px solid #ddd',
+            border: `1px solid ${theme.borderLight}`,
             borderRadius: '6px',
             cursor: 'pointer',
-            color: '#666',
+            color: theme.textSecondary,
             fontSize: '13px',
           }}
         >
@@ -1141,13 +1683,13 @@ const AIBoard = () => {
             outline: 'none',
             fontSize: '16px',
             fontWeight: '600',
-            color: '#1a1a1a',
+            color: theme.text,
             padding: '4px 8px',
             borderRadius: '4px',
             background: 'transparent',
             minWidth: '200px',
           }}
-          onFocus={(e) => e.target.style.background = '#f5f5f5'}
+          onFocus={(e) => e.target.style.background = theme.inputFocusBg}
           onBlurCapture={(e) => e.target.style.background = 'transparent'}
         />
         <div style={{
@@ -1155,7 +1697,7 @@ const AIBoard = () => {
           alignItems: 'center',
           gap: '4px',
           fontSize: '12px',
-          color: saveStatus === 'saved' ? '#4caf50' : saveStatus === 'saving' ? '#ff9800' : saveStatus === 'error' ? '#f44336' : '#999',
+          color: saveStatus === 'saved' ? '#4caf50' : saveStatus === 'saving' ? '#ff9800' : saveStatus === 'error' ? '#f44336' : theme.textMuted,
         }}>
           {saveStatus === 'saved' && <><Cloud size={14} /> Saved</>}
           {saveStatus === 'saving' && <><Loader size={14} /> Saving...</>}
@@ -1170,15 +1712,35 @@ const AIBoard = () => {
           alignItems: 'center',
           gap: '5px',
           padding: '5px 10px',
-          background: '#f5f5f5',
+          background: theme.surfaceHover,
           borderRadius: '6px',
           fontSize: '12px',
-          color: '#555',
+          color: theme.textSecondary,
           fontWeight: '500',
         }}>
           <Users size={13} />
           {onlineUsers.length}
         </div>
+        {/* Dark Mode Toggle */}
+        <button
+          onClick={toggleDarkMode}
+          title={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: '34px',
+            height: '34px',
+            background: darkMode ? 'rgba(56,189,248,0.15)' : 'none',
+            border: `1px solid ${darkMode ? 'rgba(56,189,248,0.3)' : theme.borderLight}`,
+            borderRadius: '6px',
+            cursor: 'pointer',
+            color: darkMode ? '#38bdf8' : theme.textSecondary,
+            transition: 'all 0.2s',
+          }}
+        >
+          {darkMode ? <Sun size={16} /> : <Moon size={16} />}
+        </button>
         {/* Clear Board */}
         <button
           onClick={() => {
@@ -1194,10 +1756,10 @@ const AIBoard = () => {
             gap: '5px',
             padding: '6px 12px',
             background: 'none',
-            border: '1px solid #f44336',
+            border: `1px solid ${darkMode ? '#ef5350' : '#f44336'}`,
             borderRadius: '6px',
             cursor: 'pointer',
-            color: '#f44336',
+            color: darkMode ? '#ef5350' : '#f44336',
             fontSize: '13px',
           }}
         >
@@ -1457,9 +2019,9 @@ const AIBoard = () => {
           zIndex: 10
         }}>
         <div style={{
-          background: 'white',
+          background: theme.surface,
           borderRadius: '12px',
-          boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+          boxShadow: darkMode ? '0 4px 12px rgba(0,0,0,0.4)' : '0 4px 12px rgba(0,0,0,0.15)',
           display: 'flex',
           flexDirection: 'column',
           padding: '8px',
@@ -1468,11 +2030,10 @@ const AIBoard = () => {
         }}>
           {[
             { id: 'select', icon: MousePointer, label: 'Select' },
+            { id: 'hand', icon: Hand, label: 'Hand' },
             { id: 'pen', icon: Pen, label: 'Draw' },
-            { id: 'sticky', icon: StickyNote, label: 'Sticky Note' },
+            { id: 'eraser', icon: Eraser, label: 'Eraser' },
             { id: 'text', icon: Type, label: 'Text' },
-            { id: 'rectangle', icon: Square, label: 'Rectangle' },
-            { id: 'circle', icon: Circle, label: 'Circle' },
             { id: 'arrow', icon: ArrowRight, label: 'Arrow' },
             { id: 'line', icon: Minus, label: 'Line' }
           ].map(tool => {
@@ -1481,7 +2042,7 @@ const AIBoard = () => {
             return (
               <button
                 key={tool.id}
-                onClick={() => setActiveTool(tool.id)}
+                onClick={() => { setActiveTool(tool.id); setShowStickyMenu(false); setShowShapeMenu(false); }}
                 title={tool.label}
                 style={{
                   width: '44px',
@@ -1489,7 +2050,7 @@ const AIBoard = () => {
                   border: 'none',
                   borderRadius: '8px',
                   background: isActive ? '#2196F3' : 'transparent',
-                  color: isActive ? 'white' : '#666',
+                  color: isActive ? 'white' : theme.textSecondary,
                   cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
@@ -1498,7 +2059,7 @@ const AIBoard = () => {
                   position: 'relative'
                 }}
                 onMouseEnter={(e) => {
-                  if (!isActive) e.currentTarget.style.background = '#f5f5f5';
+                  if (!isActive) e.currentTarget.style.background = theme.surfaceHover;
                 }}
                 onMouseLeave={(e) => {
                   if (!isActive) e.currentTarget.style.background = 'transparent';
@@ -1509,13 +2070,156 @@ const AIBoard = () => {
             );
           })}
 
-          {/* Layering and Delete buttons - shows when object is selected */}
-          {selectedId && (
+          {/* Sticky Note button with color picker */}
+          <div style={{ position: 'relative' }}>
+            <button
+              onClick={() => { setActiveTool('sticky'); setShowStickyMenu(!showStickyMenu); setShowShapeMenu(false); }}
+              title="Sticky Note"
+              style={{
+                width: '44px',
+                height: '44px',
+                border: 'none',
+                borderRadius: '8px',
+                background: activeTool === 'sticky' ? '#2196F3' : 'transparent',
+                color: activeTool === 'sticky' ? 'white' : theme.textSecondary,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                transition: 'all 0.2s',
+                position: 'relative'
+              }}
+              onMouseEnter={(e) => {
+                if (activeTool !== 'sticky') e.currentTarget.style.background = theme.surfaceHover;
+              }}
+              onMouseLeave={(e) => {
+                if (activeTool !== 'sticky') e.currentTarget.style.background = 'transparent';
+              }}
+            >
+              <StickyNote size={20} />
+              <div style={{
+                position: 'absolute', bottom: '4px', right: '4px',
+                width: '8px', height: '8px', borderRadius: '50%',
+                background: { yellow: '#FFF59D', pink: '#F48FB1', blue: '#81D4FA', green: '#A5D6A7', purple: '#CE93D8', orange: '#FFAB91' }[stickyColor] || '#FFF59D',
+                border: '1px solid rgba(0,0,0,0.2)',
+              }} />
+            </button>
+            {showStickyMenu && (
+              <div style={{
+                position: 'absolute', left: '64px', top: '0',
+                background: theme.surface, borderRadius: '12px',
+                boxShadow: darkMode ? '0 8px 24px rgba(0,0,0,0.5)' : '0 8px 24px rgba(0,0,0,0.12)',
+                padding: '10px',
+                zIndex: 20,
+                animation: 'popIn 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
+              }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '6px' }}>
+                  {[
+                    { id: 'yellow', color: '#FFF59D' },
+                    { id: 'pink', color: '#F48FB1' },
+                    { id: 'blue', color: '#81D4FA' },
+                    { id: 'green', color: '#A5D6A7' },
+                    { id: 'purple', color: '#CE93D8' },
+                    { id: 'orange', color: '#FFAB91' },
+                  ].map(c => (
+                    <button
+                      key={c.id}
+                      onClick={() => { setStickyColor(c.id); setShowStickyMenu(false); }}
+                      style={{
+                        width: '28px', height: '28px', borderRadius: '6px',
+                        background: c.color, border: stickyColor === c.id ? '3px solid #2196F3' : '2px solid transparent',
+                        cursor: 'pointer', transition: 'all 0.15s',
+                        padding: 0,
+                        transform: stickyColor === c.id ? 'scale(1.15)' : 'scale(1)',
+                      }}
+                      title={c.id}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Shape button with shape picker */}
+          <div style={{ position: 'relative' }}>
+            <button
+              onClick={() => { setActiveTool('shape'); setShowShapeMenu(!showShapeMenu); setShowStickyMenu(false); }}
+              title="Shapes"
+              style={{
+                width: '44px',
+                height: '44px',
+                border: 'none',
+                borderRadius: '8px',
+                background: activeTool === 'shape' ? '#2196F3' : 'transparent',
+                color: activeTool === 'shape' ? 'white' : theme.textSecondary,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                transition: 'all 0.2s',
+              }}
+              onMouseEnter={(e) => {
+                if (activeTool !== 'shape') e.currentTarget.style.background = theme.surfaceHover;
+              }}
+              onMouseLeave={(e) => {
+                if (activeTool !== 'shape') e.currentTarget.style.background = 'transparent';
+              }}
+            >
+              <Shapes size={20} />
+            </button>
+            {showShapeMenu && (
+              <div style={{
+                position: 'absolute', left: '64px', top: '0',
+                background: theme.surface, borderRadius: '12px',
+                boxShadow: darkMode ? '0 8px 24px rgba(0,0,0,0.5)' : '0 8px 24px rgba(0,0,0,0.12)',
+                padding: '10px',
+                zIndex: 20,
+                animation: 'popIn 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
+              }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '6px' }}>
+                  {[
+                    { id: 'rectangle', icon: Square, label: 'Rectangle' },
+                    { id: 'circle', icon: Circle, label: 'Circle' },
+                    { id: 'triangle', icon: Triangle, label: 'Triangle' },
+                    { id: 'diamond', icon: Diamond, label: 'Diamond' },
+                    { id: 'hexagon', icon: Hexagon, label: 'Hexagon' },
+                    { id: 'star', icon: Star, label: 'Star' },
+                  ].map(s => {
+                    const SIcon = s.icon;
+                    return (
+                      <button
+                        key={s.id}
+                        onClick={() => { setShapeType(s.id); setShowShapeMenu(false); }}
+                        title={s.label}
+                        style={{
+                          width: '28px', height: '28px',
+                          border: 'none', borderRadius: '6px',
+                          background: shapeType === s.id ? (darkMode ? 'rgba(33,150,243,0.15)' : '#e3f2fd') : 'transparent',
+                          color: shapeType === s.id ? '#2196F3' : theme.textSecondary,
+                          cursor: 'pointer', display: 'flex',
+                          alignItems: 'center', justifyContent: 'center',
+                          transition: 'all 0.15s',
+                          transform: shapeType === s.id ? 'scale(1.15)' : 'scale(1)',
+                        }}
+                        onMouseEnter={(e) => { e.currentTarget.style.background = shapeType === s.id ? (darkMode ? 'rgba(33,150,243,0.15)' : '#e3f2fd') : theme.surfaceHover; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.background = shapeType === s.id ? (darkMode ? 'rgba(33,150,243,0.15)' : '#e3f2fd') : 'transparent'; }}
+                      >
+                        <SIcon size={16} />
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Layering and Delete buttons - shows when object(s) selected */}
+          {(selectedId || selectedIds.length > 0) && (
             <>
               <div style={{
                 width: '100%',
                 height: '1px',
-                background: '#e0e0e0',
+                background: theme.divider,
                 margin: '8px 0'
               }} />
 
@@ -1529,7 +2233,7 @@ const AIBoard = () => {
                   border: 'none',
                   borderRadius: '8px',
                   background: 'transparent',
-                  color: '#333',
+                  color: theme.text,
                   cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
@@ -1537,7 +2241,7 @@ const AIBoard = () => {
                   transition: 'all 0.2s'
                 }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.background = '#f5f5f5';
+                  e.currentTarget.style.background = theme.surfaceHover;
                 }}
                 onMouseLeave={(e) => {
                   e.currentTarget.style.background = 'transparent';
@@ -1555,7 +2259,7 @@ const AIBoard = () => {
                   border: 'none',
                   borderRadius: '8px',
                   background: 'transparent',
-                  color: '#333',
+                  color: theme.text,
                   cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
@@ -1563,7 +2267,7 @@ const AIBoard = () => {
                   transition: 'all 0.2s'
                 }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.background = '#f5f5f5';
+                  e.currentTarget.style.background = theme.surfaceHover;
                 }}
                 onMouseLeave={(e) => {
                   e.currentTarget.style.background = 'transparent';
@@ -1581,7 +2285,7 @@ const AIBoard = () => {
                   border: 'none',
                   borderRadius: '8px',
                   background: 'transparent',
-                  color: '#333',
+                  color: theme.text,
                   cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
@@ -1589,7 +2293,7 @@ const AIBoard = () => {
                   transition: 'all 0.2s'
                 }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.background = '#f5f5f5';
+                  e.currentTarget.style.background = theme.surfaceHover;
                 }}
                 onMouseLeave={(e) => {
                   e.currentTarget.style.background = 'transparent';
@@ -1607,7 +2311,7 @@ const AIBoard = () => {
                   border: 'none',
                   borderRadius: '8px',
                   background: 'transparent',
-                  color: '#333',
+                  color: theme.text,
                   cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
@@ -1615,7 +2319,7 @@ const AIBoard = () => {
                   transition: 'all 0.2s'
                 }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.background = '#f5f5f5';
+                  e.currentTarget.style.background = theme.surfaceHover;
                 }}
                 onMouseLeave={(e) => {
                   e.currentTarget.style.background = 'transparent';
@@ -1627,7 +2331,7 @@ const AIBoard = () => {
               <div style={{
                 width: '100%',
                 height: '1px',
-                background: '#e0e0e0',
+                background: theme.divider,
                 margin: '8px 0'
               }} />
 
@@ -1663,9 +2367,9 @@ const AIBoard = () => {
 
           {/* Undo / Redo - separate panel below the toolbar */}
           <div style={{
-            background: 'white',
+            background: theme.surface,
             borderRadius: '10px',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+            boxShadow: darkMode ? '0 4px 12px rgba(0,0,0,0.4)' : '0 4px 12px rgba(0,0,0,0.15)',
             display: 'flex',
             flexDirection: 'column',
             padding: '6px',
@@ -1687,7 +2391,7 @@ const AIBoard = () => {
                   border: 'none',
                   borderRadius: '8px',
                   background: 'transparent',
-                  color: enabled ? '#333' : '#ccc',
+                  color: enabled ? theme.text : (darkMode ? '#3a4a6c' : '#ccc'),
                   cursor: enabled ? 'pointer' : 'not-allowed',
                   display: 'flex',
                   alignItems: 'center',
@@ -1695,7 +2399,7 @@ const AIBoard = () => {
                   transition: 'all 0.2s',
                 }}
                 onMouseEnter={(e) => {
-                  if (enabled) e.currentTarget.style.background = '#f5f5f5';
+                  if (enabled) e.currentTarget.style.background = theme.surfaceHover;
                 }}
                 onMouseLeave={(e) => {
                   e.currentTarget.style.background = 'transparent';
@@ -1713,19 +2417,16 @@ const AIBoard = () => {
             position: 'absolute',
             left: '88px',
             top: '16px',
-            background: 'white',
+            background: theme.surface,
             borderRadius: '12px',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+            boxShadow: darkMode ? '0 8px 24px rgba(0,0,0,0.5)' : '0 8px 24px rgba(0,0,0,0.12)',
             padding: '10px',
             display: 'flex',
             flexDirection: 'column',
-            gap: '8px',
+            gap: '6px',
             zIndex: 10,
+            animation: 'popIn 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
           }}>
-            {/* Label */}
-            <div style={{ fontSize: '10px', color: '#aaa', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', textAlign: 'center' }}>
-              Color
-            </div>
             {/* Color swatches */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '6px' }}>
               {[
@@ -1744,7 +2445,7 @@ const AIBoard = () => {
                     height: '28px',
                     borderRadius: '6px',
                     background: color,
-                    border: drawColor === color ? '3px solid #2196F3' : color === '#FFFFFF' ? '2px solid #ddd' : '2px solid transparent',
+                    border: drawColor === color ? '3px solid #2196F3' : color === '#FFFFFF' ? `2px solid ${theme.borderLight}` : '2px solid transparent',
                     cursor: 'pointer',
                     padding: 0,
                     transition: 'transform 0.1s',
@@ -1755,12 +2456,9 @@ const AIBoard = () => {
             </div>
 
             {/* Divider */}
-            <div style={{ height: '1px', background: '#f0f0f0' }} />
+            <div style={{ height: '1px', background: theme.divider }} />
 
             {/* Stroke width */}
-            <div style={{ fontSize: '10px', color: '#aaa', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', textAlign: 'center' }}>
-              Width
-            </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'center' }}>
               {[2, 4, 8].map(w => (
                 <button
@@ -1773,7 +2471,7 @@ const AIBoard = () => {
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    background: strokeWidth === w ? '#f0f4ff' : 'transparent',
+                    background: strokeWidth === w ? (darkMode ? 'rgba(102,126,234,0.15)' : '#f0f4ff') : 'transparent',
                     border: strokeWidth === w ? '1.5px solid #667eea' : '1.5px solid transparent',
                     borderRadius: '6px',
                     cursor: 'pointer',
@@ -1803,11 +2501,12 @@ const AIBoard = () => {
           {/* Zoom preset popup */}
           {showZoomMenu && (
             <div style={{
-              background: 'white',
-              borderRadius: '10px',
-              boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
+              background: theme.surface,
+              borderRadius: '12px',
+              boxShadow: darkMode ? '0 8px 24px rgba(0,0,0,0.5)' : '0 8px 24px rgba(0,0,0,0.12)',
               overflow: 'hidden',
               minWidth: '180px',
+              animation: 'popIn 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
             }}>
               {/* Fit to screen */}
               <button
@@ -1820,16 +2519,16 @@ const AIBoard = () => {
                   gap: '10px',
                   background: 'none',
                   border: 'none',
-                  borderBottom: '1px solid #f0f0f0',
+                  borderBottom: `1px solid ${theme.divider}`,
                   cursor: 'pointer',
                   fontSize: '13px',
-                  color: '#333',
+                  color: theme.text,
                   textAlign: 'left',
                 }}
-                onMouseEnter={e => e.currentTarget.style.background = '#f5f5f5'}
+                onMouseEnter={e => e.currentTarget.style.background = theme.surfaceHover}
                 onMouseLeave={e => e.currentTarget.style.background = 'none'}
               >
-                <Maximize2 size={15} color="#666" />
+                <Maximize2 size={15} color={theme.textSecondary} />
                 Fit to screen
               </button>
               {/* Zoom presets */}
@@ -1843,19 +2542,19 @@ const AIBoard = () => {
                     display: 'flex',
                     alignItems: 'center',
                     gap: '10px',
-                    background: Math.round(zoom * 100) === Math.round(level * 100) ? '#f0f4ff' : 'none',
+                    background: Math.round(zoom * 100) === Math.round(level * 100) ? (darkMode ? 'rgba(102,126,234,0.15)' : '#f0f4ff') : 'none',
                     border: 'none',
-                    borderBottom: level !== 0.5 ? '1px solid #f0f0f0' : 'none',
+                    borderBottom: level !== 0.5 ? `1px solid ${theme.divider}` : 'none',
                     cursor: 'pointer',
                     fontSize: '13px',
-                    color: Math.round(zoom * 100) === Math.round(level * 100) ? '#667eea' : '#333',
+                    color: Math.round(zoom * 100) === Math.round(level * 100) ? '#667eea' : theme.text,
                     fontWeight: Math.round(zoom * 100) === Math.round(level * 100) ? '600' : '400',
                     textAlign: 'left',
                   }}
-                  onMouseEnter={e => { if (Math.round(zoom * 100) !== Math.round(level * 100)) e.currentTarget.style.background = '#f5f5f5'; }}
-                  onMouseLeave={e => { e.currentTarget.style.background = Math.round(zoom * 100) === Math.round(level * 100) ? '#f0f4ff' : 'none'; }}
+                  onMouseEnter={e => { if (Math.round(zoom * 100) !== Math.round(level * 100)) e.currentTarget.style.background = theme.surfaceHover; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = Math.round(zoom * 100) === Math.round(level * 100) ? (darkMode ? 'rgba(102,126,234,0.15)' : '#f0f4ff') : 'none'; }}
                 >
-                  <Plus size={15} color="#aaa" />
+                  <Plus size={15} color={theme.textMuted} />
                   {Math.round(level * 100)}%
                 </button>
               ))}
@@ -1864,9 +2563,9 @@ const AIBoard = () => {
 
           {/* Zoom bar */}
           <div style={{
-            background: 'white',
+            background: theme.surface,
             borderRadius: '8px',
-            boxShadow: '0 2px 10px rgba(0,0,0,0.12)',
+            boxShadow: darkMode ? '0 2px 10px rgba(0,0,0,0.3)' : '0 2px 10px rgba(0,0,0,0.12)',
             display: 'flex',
             alignItems: 'center',
             overflow: 'hidden',
@@ -1882,11 +2581,11 @@ const AIBoard = () => {
                 justifyContent: 'center',
                 background: 'none',
                 border: 'none',
-                borderRight: '1px solid #eee',
+                borderRight: `1px solid ${theme.borderLight}`,
                 cursor: 'pointer',
-                color: '#555',
+                color: theme.textSecondary,
               }}
-              onMouseEnter={e => e.currentTarget.style.background = '#f5f5f5'}
+              onMouseEnter={e => e.currentTarget.style.background = theme.surfaceHover}
               onMouseLeave={e => e.currentTarget.style.background = 'none'}
             >
               <Minus size={16} />
@@ -1897,17 +2596,17 @@ const AIBoard = () => {
               style={{
                 padding: '0 12px',
                 height: '36px',
-                background: showZoomMenu ? '#f0f4ff' : 'none',
+                background: showZoomMenu ? (darkMode ? 'rgba(102,126,234,0.15)' : '#f0f4ff') : 'none',
                 border: 'none',
                 cursor: 'pointer',
                 fontSize: '13px',
                 fontWeight: '600',
-                color: showZoomMenu ? '#667eea' : '#333',
+                color: showZoomMenu ? '#667eea' : theme.text,
                 minWidth: '58px',
                 letterSpacing: '-0.3px',
               }}
-              onMouseEnter={e => { if (!showZoomMenu) e.currentTarget.style.background = '#f5f5f5'; }}
-              onMouseLeave={e => { e.currentTarget.style.background = showZoomMenu ? '#f0f4ff' : 'none'; }}
+              onMouseEnter={e => { if (!showZoomMenu) e.currentTarget.style.background = theme.surfaceHover; }}
+              onMouseLeave={e => { e.currentTarget.style.background = showZoomMenu ? (darkMode ? 'rgba(102,126,234,0.15)' : '#f0f4ff') : 'none'; }}
             >
               {Math.round(zoom * 100)}%
             </button>
@@ -1922,11 +2621,11 @@ const AIBoard = () => {
                 justifyContent: 'center',
                 background: 'none',
                 border: 'none',
-                borderLeft: '1px solid #eee',
+                borderLeft: `1px solid ${theme.borderLight}`,
                 cursor: 'pointer',
-                color: '#555',
+                color: theme.textSecondary,
               }}
-              onMouseEnter={e => e.currentTarget.style.background = '#f5f5f5'}
+              onMouseEnter={e => e.currentTarget.style.background = theme.surfaceHover}
               onMouseLeave={e => e.currentTarget.style.background = 'none'}
             >
               <Plus size={16} />
@@ -1950,8 +2649,8 @@ const AIBoard = () => {
             top: 0,
             left: 0,
             overflow: 'hidden',
-            cursor: isPanning ? 'grabbing' : draggedId ? 'grabbing' : activeTool === 'select' ? 'default' : 'crosshair',
-            background: 'linear-gradient(#e8e8e8 1px, transparent 1px), linear-gradient(90deg, #e8e8e8 1px, transparent 1px)',
+            cursor: isPanning ? 'grabbing' : draggedId ? 'grabbing' : activeTool === 'hand' ? 'grab' : activeTool === 'select' ? 'default' : activeTool === 'eraser' ? 'none' : 'crosshair',
+            background: `linear-gradient(${theme.gridLine} 1px, transparent 1px), linear-gradient(90deg, ${theme.gridLine} 1px, transparent 1px)`,
             backgroundSize: `${20 * zoom}px ${20 * zoom}px`,
             backgroundPosition: `${viewportOffset.x}px ${viewportOffset.y}px`
           }}
@@ -1964,6 +2663,21 @@ const AIBoard = () => {
           height: '5000px'
         }}>
           {boardObjects.map(renderObject)}
+
+          {/* Selection Box */}
+          {selectionBox && (
+            <div style={{
+              position: 'absolute',
+              left: Math.min(selectionBox.startX, selectionBox.endX),
+              top: Math.min(selectionBox.startY, selectionBox.endY),
+              width: Math.abs(selectionBox.endX - selectionBox.startX),
+              height: Math.abs(selectionBox.endY - selectionBox.startY),
+              border: '2px solid #2196F3',
+              background: 'rgba(33,150,243,0.08)',
+              borderRadius: '2px',
+              pointerEvents: 'none',
+            }} />
+          )}
 
           {/* Drawing Preview - Path */}
           {isDrawing && currentPath.length > 1 && (
@@ -2036,19 +2750,115 @@ const AIBoard = () => {
       {/* Bottom Bar */}
       <div style={{
         padding: '8px 16px',
-        background: 'white',
-        borderTop: '1px solid #e0e0e0',
+        background: theme.surface,
+        borderTop: `1px solid ${theme.border}`,
         display: 'flex',
         alignItems: 'center',
         fontSize: '12px',
-        color: '#999',
+        color: theme.textMuted,
         userSelect: 'none',
       }}>
         <div>{boardObjects.length} object{boardObjects.length !== 1 ? 's' : ''}</div>
       </div>
 
+      {/* Eraser cursor */}
+      {activeTool === 'eraser' && eraserPos && (
+        <div style={{
+          position: 'fixed',
+          left: eraserPos.x,
+          top: eraserPos.y,
+          width: '24px',
+          height: '24px',
+          borderRadius: '50%',
+          border: `2px solid ${theme.textSecondary}`,
+          background: darkMode ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.3)',
+          transform: 'translate(-50%, -50%)',
+          pointerEvents: 'none',
+          zIndex: 99998,
+          transition: 'border-color 0.1s',
+          ...(isErasing ? { borderColor: '#f44336', background: 'rgba(244,67,54,0.15)' } : {}),
+        }} />
+      )}
+
+      {/* Confetti celebration */}
+      {showConfetti && (
+        <div style={{
+          position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 99999,
+        }}>
+          {/* Confetti pieces */}
+          {Array.from({ length: 60 }).map((_, i) => {
+            const colors = ['#38bdf8', '#818cf8', '#facc15', '#f472b6', '#34d399', '#fb923c', '#a78bfa'];
+            const color = colors[i % colors.length];
+            const left = Math.random() * 100;
+            const delay = Math.random() * 1.5;
+            const duration = 2 + Math.random() * 1.5;
+            const size = 6 + Math.random() * 6;
+            const rotation = Math.random() * 360;
+            const isCircle = i % 3 === 0;
+            return (
+              <div key={i} style={{
+                position: 'absolute',
+                left: `${left}%`,
+                top: '-10px',
+                width: `${size}px`,
+                height: isCircle ? `${size}px` : `${size * 0.6}px`,
+                background: color,
+                borderRadius: isCircle ? '50%' : '2px',
+                animation: `confetti-fall ${duration}s ease-in ${delay}s forwards`,
+                transform: `rotate(${rotation}deg)`,
+                opacity: 0,
+              }} />
+            );
+          })}
+          {/* Toast message */}
+          <div style={{
+            position: 'absolute',
+            top: '80px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            background: 'rgba(30,30,40,0.95)',
+            backdropFilter: 'blur(12px)',
+            border: '1px solid rgba(255,255,255,0.15)',
+            borderRadius: '14px',
+            padding: '14px 28px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+            animation: 'confetti-toast 4s ease forwards',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
+          }}>
+            <span style={{ fontSize: '22px' }}>🎉</span>
+            <span style={{
+              fontSize: '15px',
+              fontWeight: '600',
+              background: 'linear-gradient(135deg, #38bdf8, #818cf8)',
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent',
+            }}>
+              The more the merrier!
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* Animations */}
       <style>{`
+        @keyframes confetti-fall {
+          0% {
+            transform: translateY(0) rotate(0deg);
+            opacity: 1;
+          }
+          100% {
+            transform: translateY(100vh) rotate(720deg);
+            opacity: 0;
+          }
+        }
+        @keyframes confetti-toast {
+          0% { opacity: 0; transform: translateX(-50%) translateY(-20px) scale(0.9); }
+          10% { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+          80% { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+          100% { opacity: 0; transform: translateX(-50%) translateY(-10px) scale(0.95); }
+        }
         @keyframes float-sparkle-1 {
           0%, 100% {
             transform: translate(0, 0) scale(1);
@@ -2090,6 +2900,17 @@ const AIBoard = () => {
           to {
             opacity: 1;
             transform: translateY(0);
+          }
+        }
+
+        @keyframes popIn {
+          from {
+            opacity: 0;
+            transform: scale(0.9) translateX(-8px);
+          }
+          to {
+            opacity: 1;
+            transform: scale(1) translateX(0);
           }
         }
       `}</style>
