@@ -2,6 +2,7 @@ import { memo } from 'react';
 import {
   MousePointer, Hand, Pen, Eraser, Type, ArrowRight, Minus,
   StickyNote, Shapes, Square, Circle, Triangle, Diamond, Hexagon, Star,
+  Frame,
   ChevronsUp, ChevronUp, ChevronDown, ChevronsDown,
   Undo, Redo, Trash2,
 } from 'lucide-react';
@@ -170,6 +171,15 @@ export default memo(function Toolbar({
             </div>
           )}
         </div>
+
+        {/* Frame tool */}
+        <ToolButton
+          isActive={activeTool === 'frame'}
+          onClick={() => { setActiveTool('frame'); setShowStickyMenu(false); setShowShapeMenu(false); }}
+          title="Frame"
+          icon={Frame}
+          theme={theme}
+        />
 
         {/* Selection-dependent controls */}
         {hasSelection && (

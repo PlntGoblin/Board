@@ -6,7 +6,7 @@ export default memo(function BoardObject({
   obj, isSelected, isEditing, editingText,
   setEditingId, setEditingText,
   handleMouseDown, setBoardObjects,
-  setIsResizing, setResizeHandle, theme,
+  setIsResizing, setResizeHandle, setIsRotating, isMultiSelected, theme,
 }) {
   const updateProp = (id, prop, value) => {
     setBoardObjects(prev => prev.map(o => o.id === id ? { ...o, [prop]: value } : o));
@@ -18,6 +18,7 @@ export default memo(function BoardObject({
       editingText={editingText} setEditingId={setEditingId}
       setEditingText={setEditingText} handleMouseDown={handleMouseDown}
       setBoardObjects={setBoardObjects} updateProp={updateProp}
+      setIsRotating={setIsRotating} isMultiSelected={isMultiSelected}
     />;
   }
 
@@ -26,6 +27,7 @@ export default memo(function BoardObject({
       obj={obj} isSelected={isSelected}
       handleMouseDown={handleMouseDown} updateProp={updateProp}
       setIsResizing={setIsResizing} setResizeHandle={setResizeHandle}
+      setIsRotating={setIsRotating} isMultiSelected={isMultiSelected}
     />;
   }
 
@@ -35,11 +37,12 @@ export default memo(function BoardObject({
       editingText={editingText} setEditingId={setEditingId}
       setEditingText={setEditingText} handleMouseDown={handleMouseDown}
       setBoardObjects={setBoardObjects} theme={theme}
+      setIsRotating={setIsRotating} isMultiSelected={isMultiSelected}
     />;
   }
 
   if (obj.type === 'frame') {
-    return <Frame obj={obj} isSelected={isSelected} handleMouseDown={handleMouseDown} theme={theme} />;
+    return <Frame obj={obj} isSelected={isSelected} isEditing={isEditing} editingText={editingText} setEditingId={setEditingId} setEditingText={setEditingText} setBoardObjects={setBoardObjects} handleMouseDown={handleMouseDown} theme={theme} setIsResizing={setIsResizing} setResizeHandle={setResizeHandle} setIsRotating={setIsRotating} isMultiSelected={isMultiSelected} />;
   }
 
   if (obj.type === 'path') return <PathDrawing obj={obj} isSelected={isSelected} />;
@@ -55,14 +58,15 @@ export default memo(function BoardObject({
   prev.theme === next.theme
 )
 
-function StickyNote({ obj, isSelected, isEditing, editingText, setEditingId, setEditingText, handleMouseDown, setBoardObjects, updateProp }) {
+function StickyNote({ obj, isSelected, isEditing, editingText, setEditingId, setEditingText, handleMouseDown, setBoardObjects, updateProp, setIsRotating, isMultiSelected }) {
   const noteFontSize = obj.fontSize || 14;
   const noteBold = obj.fontWeight === 'bold';
   const noteAlign = obj.textAlign || 'left';
   const showToolbar = isSelected || isEditing;
 
   return (
-    <div key={obj.id} style={{ position: 'absolute', left: obj.x, top: obj.y }}>
+    <div key={obj.id} style={{ position: 'absolute', left: obj.x, top: obj.y, transform: obj.rotation ? `rotate(${obj.rotation}deg)` : undefined, transformOrigin: 'center center' }}>
+      {isSelected && !isEditing && !isMultiSelected && <RotationHandle setIsRotating={setIsRotating} />}
       {showToolbar && (
         <div
           onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); }}
@@ -188,7 +192,7 @@ function StickyNote({ obj, isSelected, isEditing, editingText, setEditingId, set
   );
 }
 
-function Shape({ obj, isSelected, handleMouseDown, updateProp, setIsResizing, setResizeHandle }) {
+function Shape({ obj, isSelected, handleMouseDown, updateProp, setIsResizing, setResizeHandle, setIsRotating, isMultiSelected }) {
   const w = obj.width || 100;
   const h = obj.height || 100;
   const fillColor = getColor(obj.color);
@@ -227,7 +231,8 @@ function Shape({ obj, isSelected, handleMouseDown, updateProp, setIsResizing, se
   };
 
   return (
-    <div key={obj.id} style={{ position: 'absolute', left: obj.x, top: obj.y, width: w, height: h }}>
+    <div key={obj.id} style={{ position: 'absolute', left: obj.x, top: obj.y, width: w, height: h, transform: obj.rotation ? `rotate(${obj.rotation}deg)` : undefined, transformOrigin: 'center center' }}>
+      {isSelected && !isMultiSelected && <RotationHandle setIsRotating={setIsRotating} />}
       {isSelected && (
         <div
           onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); }}
@@ -297,7 +302,7 @@ function Shape({ obj, isSelected, handleMouseDown, updateProp, setIsResizing, se
   );
 }
 
-function TextObject({ obj, isSelected, isEditing, editingText, setEditingId, setEditingText, handleMouseDown, setBoardObjects, theme }) {
+function TextObject({ obj, isSelected, isEditing, editingText, setEditingId, setEditingText, handleMouseDown, setBoardObjects, theme, setIsRotating, isMultiSelected }) {
   return (
     <div
       key={obj.id}
@@ -314,8 +319,11 @@ function TextObject({ obj, isSelected, isEditing, editingText, setEditingId, set
         fontSize: '16px', fontFamily: 'system-ui, sans-serif',
         color: theme.text, userSelect: isEditing ? 'text' : 'none',
         whiteSpace: 'pre-wrap',
+        transform: obj.rotation ? `rotate(${obj.rotation}deg)` : undefined,
+        transformOrigin: 'center center',
       }}
     >
+      {isSelected && !isEditing && !isMultiSelected && <RotationHandle setIsRotating={setIsRotating} />}
       {isEditing ? (
         <input
           autoFocus
@@ -339,27 +347,72 @@ function TextObject({ obj, isSelected, isEditing, editingText, setEditingId, set
   );
 }
 
-function Frame({ obj, isSelected, handleMouseDown, theme }) {
+function Frame({ obj, isSelected, isEditing, editingText, setEditingId, setEditingText, setBoardObjects, handleMouseDown, theme, setIsResizing, setResizeHandle, setIsRotating, isMultiSelected }) {
   return (
     <div
       key={obj.id}
-      onMouseDown={(e) => handleMouseDown(e, obj.id)}
+      onMouseDown={(e) => { if (!isEditing) handleMouseDown(e, obj.id); }}
       style={{
         position: 'absolute', left: obj.x, top: obj.y,
         width: obj.width, height: obj.height,
         border: isSelected ? '3px solid #2196F3' : `2px dashed ${theme.textSecondary}`,
-        borderRadius: '8px', cursor: 'move',
+        borderRadius: '8px', cursor: isEditing ? 'default' : 'move',
         backgroundColor: 'rgba(255,255,255,0.05)',
+        transform: obj.rotation ? `rotate(${obj.rotation}deg)` : undefined,
+        transformOrigin: 'center center',
       }}
     >
-      <div style={{
-        position: 'absolute', top: -30, left: 0,
-        padding: '4px 12px', backgroundColor: '#333',
-        color: 'white', borderRadius: '4px',
-        fontSize: '14px', fontWeight: 'bold',
-      }}>
-        {obj.title}
+      {isSelected && !isMultiSelected && <RotationHandle setIsRotating={setIsRotating} />}
+      <div
+        onMouseDown={(e) => {
+          if (isSelected) e.stopPropagation();
+        }}
+        onDoubleClick={(e) => {
+          e.stopPropagation();
+          if (!isEditing) { setEditingId(obj.id); setEditingText(obj.title || ''); }
+        }}
+        style={{
+          position: 'absolute', top: -30, left: 0,
+          padding: '4px 12px', backgroundColor: '#333',
+          color: 'white', borderRadius: '4px',
+          fontSize: '14px', fontWeight: 'bold',
+          cursor: isEditing ? 'text' : 'pointer',
+          minWidth: '60px',
+        }}
+      >
+        {isEditing ? (
+          <input
+            autoFocus
+            type="text"
+            value={editingText}
+            onChange={(e) => setEditingText(e.target.value)}
+            onBlur={() => {
+              setBoardObjects(prev => prev.map(o => o.id === obj.id ? { ...o, title: editingText } : o));
+              setEditingId(null);
+            }}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === 'Escape') e.target.blur(); }}
+            onMouseDown={(e) => e.stopPropagation()}
+            style={{
+              border: 'none', outline: 'none', background: 'transparent',
+              color: 'white', fontSize: '14px', fontWeight: 'bold',
+              fontFamily: 'inherit', width: '100%', padding: 0,
+            }}
+          />
+        ) : (
+          obj.title
+        )}
       </div>
+      {isSelected && (
+        <div
+          onMouseDown={(e) => { e.stopPropagation(); setIsResizing(true); setResizeHandle('se'); }}
+          style={{
+            position: 'absolute', bottom: -4, right: -4,
+            width: '12px', height: '12px', background: '#2196F3',
+            border: '2px solid white', borderRadius: '50%',
+            cursor: 'nwse-resize', zIndex: 1000,
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -406,5 +459,29 @@ function ArrowDrawing({ obj, isSelected }) {
         strokeLinecap="round" markerEnd={`url(#arrowhead-${obj.id})`}
         opacity={isSelected ? 0.7 : 1} />
     </svg>
+  );
+}
+
+function RotationHandle({ setIsRotating }) {
+  return (
+    <>
+      <div style={{
+        position: 'absolute', left: '50%', bottom: -20,
+        width: '1px', height: '20px', background: '#4CAF50',
+        transform: 'translateX(-50%)',
+        pointerEvents: 'none', zIndex: 99,
+      }} />
+      <div
+        onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); setIsRotating(true); }}
+        style={{
+          position: 'absolute', left: '50%', bottom: -34,
+          width: '14px', height: '14px', background: '#4CAF50',
+          border: '2px solid white', borderRadius: '50%',
+          transform: 'translateX(-50%)',
+          cursor: 'grab', zIndex: 102,
+          boxShadow: '0 2px 4px rgba(0,0,0,0.3)',
+        }}
+      />
+    </>
   );
 }

@@ -59,6 +59,7 @@ const AIBoard = () => {
 
   // --- Edit state ---
   const [isResizing, setIsResizing] = useState(false);
+  const [isRotating, setIsRotating] = useState(false);
   const [, setResizeHandle] = useState(null);
   const [editingId, setEditingId] = useState(null);
   const [editingText, setEditingText] = useState('');
@@ -88,6 +89,7 @@ const AIBoard = () => {
   const prevUserCount = useRef(0);
   const cachedRect = useRef(null);
   const rafId = useRef(null);
+  const rotationStartRef = useRef(null);
 
   // --- Theme ---
   const theme = darkTheme;
@@ -274,8 +276,43 @@ const AIBoard = () => {
         }));
         return { success: true, arrangedCount: count };
       }
+      case "resizeObject": {
+        setBoardObjects(prev => prev.map(obj => toolInput.objectIds.includes(obj.id) ? { ...obj, width: toolInput.width, height: toolInput.height } : obj));
+        return { success: true, resizedCount: toolInput.objectIds.length };
+      }
+      case "createText": {
+        const n = { id: nextId.current++, type: 'text', x: toolInput.x, y: toolInput.y, width: 200, height: 50, text: toolInput.text };
+        setBoardObjects(prev => [...prev, n]);
+        return { success: true, objectId: n.id };
+      }
       case "getBoardState":
         return { objects: boardObjects.map(({ id, type, x, y, width, height, color, text, title, shapeType }) => ({ id, type, x, y, width, height, color, text, title, shapeType })) };
+      case "zoomToFit": {
+        const targets = toolInput.objectIds?.length
+          ? boardObjects.filter(obj => toolInput.objectIds.includes(obj.id))
+          : boardObjects;
+        if (targets.length === 0) return { success: false, error: 'No objects to zoom to' };
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        for (const obj of targets) {
+          const b = getObjBounds(obj);
+          minX = Math.min(minX, b.x); minY = Math.min(minY, b.y);
+          maxX = Math.max(maxX, b.x + b.w); maxY = Math.max(maxY, b.y + b.h);
+        }
+        const pad = 60;
+        const contentW = maxX - minX + pad * 2;
+        const contentH = maxY - minY + pad * 2;
+        const scaleX = window.innerWidth / contentW;
+        const scaleY = window.innerHeight / contentH;
+        const newZoom = Math.min(Math.max(Math.min(scaleX, scaleY), ZOOM_MIN), ZOOM_MAX);
+        const centerX = minX + (maxX - minX) / 2;
+        const centerY = minY + (maxY - minY) / 2;
+        setZoom(newZoom);
+        setViewportOffset({
+          x: window.innerWidth / 2 - centerX * newZoom,
+          y: window.innerHeight / 2 - centerY * newZoom,
+        });
+        return { success: true, zoomedToCount: targets.length };
+      }
       case "deleteObjects": {
         const ids = new Set(toolInput.objectIds);
         setBoardObjects(prev => prev.filter(obj => !ids.has(obj.id)));
@@ -287,6 +324,27 @@ const AIBoard = () => {
   }, [boardObjects]);
 
   // --- AI command processing ---
+  const systemMessage = {
+    role: "system",
+    content: `You are an AI assistant that helps users create and manipulate elements on a visual collaboration board (like Miro). Use the provided tools to create sticky notes, shapes, text, frames, and organize them.
+
+Rules:
+- ALWAYS call getBoardState first when the user references existing objects or wants to manipulate the board.
+- Prefer modifying existing objects (move, resize, recolor) over deleting and recreating them.
+- Never move objects the user didn't ask you to move.
+- Understand spatial relationships: an object is "inside" a frame if its x,y position falls within the frame's x,y,width,height bounds.
+- When a command is ambiguous, ask the user to clarify before acting. For example "resize the frame to fit its contents" could mean: (A) resize the frame's bounding box to tightly wrap the elements inside it, or (B) zoom the viewport so all board content is visible. Ask which one they mean.
+- When resizing a frame to fit contents: find objects inside/near the frame, calculate their bounding box (min x, min y, max x+width, max y+height), add ~20px padding, then use resizeObject and optionally moveObject on the FRAME only — never move the contents.
+- Place new elements at reasonable positions that don't overlap existing ones.
+- When arranging in grids, account for object sizes (sticky notes are 200x200, shapes vary).
+- Be creative and helpful.`,
+  };
+
+  const openaiTools = boardTools.map(t => ({
+    type: "function",
+    function: { name: t.name, description: t.description, parameters: t.parameters },
+  }));
+
   const processAICommand = async () => {
     if (!aiInput.trim() || isProcessing) return;
     setIsProcessing(true);
@@ -295,7 +353,7 @@ const AIBoard = () => {
     const newHistory = [...conversationHistory, userMessage];
 
     try {
-      let currentMessages = newHistory;
+      let currentMessages = [systemMessage, ...newHistory];
       let continueProcessing = true;
 
       while (continueProcessing) {
@@ -303,34 +361,42 @@ const AIBoard = () => {
           method: "POST",
           headers: { "Content-Type": "application/json", "Authorization": `Bearer ${session?.access_token}` },
           body: JSON.stringify({
-            model: "claude-sonnet-4-20250514",
-            max_tokens: 4096,
-            system: "You are an AI assistant that helps users create and manipulate elements on a visual collaboration board (like Miro). Use the provided tools to create sticky notes, shapes, frames, and organize them. Always use getBoardState first when you need to know what's currently on the board before manipulating existing objects. Place elements at reasonable positions that don't overlap. Be creative and helpful.",
-            tools: boardTools,
+            model: "gpt-4o-mini",
+            max_completion_tokens: 4096,
+            tools: openaiTools,
             messages: currentMessages,
           }),
         });
         const data = await response.json();
         if (!response.ok) throw new Error(data.error?.message || 'API request failed');
 
-        if (data.content) {
-          for (const block of data.content) {
-            if (block.type === 'text') setAiResponse(prev => prev + block.text);
-            else if (block.type === 'tool_use') {
-              const result = executeToolCall(block.name, block.input);
-              currentMessages = [
-                ...currentMessages,
-                { role: "assistant", content: data.content },
-                { role: "user", content: [{ type: "tool_result", tool_use_id: block.id, content: JSON.stringify(result) }] },
-              ];
-            }
+        const choice = data.choices?.[0];
+        if (!choice) throw new Error('No response from AI');
+
+        const message = choice.message;
+
+        // Handle text response
+        if (message.content) {
+          setAiResponse(prev => prev + message.content);
+        }
+
+        // Handle tool calls
+        if (message.tool_calls?.length) {
+          // Append assistant message (with tool_calls) to history
+          currentMessages = [...currentMessages, message];
+
+          for (const toolCall of message.tool_calls) {
+            const result = executeToolCall(toolCall.function.name, JSON.parse(toolCall.function.arguments));
+            currentMessages = [
+              ...currentMessages,
+              { role: "tool", tool_call_id: toolCall.id, content: JSON.stringify(result) },
+            ];
           }
         }
 
-        const hasToolUse = data.content?.some(b => b.type === 'tool_use');
-        continueProcessing = hasToolUse && data.stop_reason === 'tool_use';
+        continueProcessing = choice.finish_reason === 'tool_calls';
         if (!continueProcessing) {
-          setConversationHistory([...newHistory, { role: "assistant", content: data.content }]);
+          setConversationHistory([...newHistory, { role: "assistant", content: message.content || '' }]);
         }
       }
       setAiInput('');
@@ -414,7 +480,7 @@ const AIBoard = () => {
 
     // Batch heavier state updates via requestAnimationFrame
     if (rafId.current) cancelAnimationFrame(rafId.current);
-    const clientX = e.clientX, clientY = e.clientY;
+    const clientX = e.clientX, clientY = e.clientY, shiftKey = e.shiftKey;
 
     rafId.current = requestAnimationFrame(() => {
       rafId.current = null;
@@ -425,6 +491,28 @@ const AIBoard = () => {
       }
       if (isDrawing && activeTool === 'pen' && pt) { setCurrentPath(prev => [...prev, pt]); return; }
       if (isErasing && activeTool === 'eraser' && pt) { eraseAtPoint(pt.x, pt.y); return; }
+
+      if (isRotating && selectedId && selectedIds.length <= 1) {
+        const mouseX = (clientX - viewportOffset.x) / zoom;
+        const mouseY = (clientY - viewportOffset.y) / zoom;
+        setBoardObjects(prev => {
+          const primary = prev.find(o => o.id === selectedId);
+          if (!primary) return prev;
+          const cx = primary.x + (primary.width || 0) / 2;
+          const cy = primary.y + (primary.height || 0) / 2;
+          const currentAngle = Math.atan2(mouseY - cy, mouseX - cx) * (180 / Math.PI) + 90;
+          if (!rotationStartRef.current) {
+            rotationStartRef.current = { initialAngle: currentAngle, initialRotation: primary.rotation || 0 };
+            return prev;
+          }
+          let delta = currentAngle - rotationStartRef.current.initialAngle;
+          if (shiftKey) delta = Math.round(delta / 15) * 15;
+          return prev.map(o =>
+            o.id === selectedId ? { ...o, rotation: rotationStartRef.current.initialRotation + delta } : o
+          );
+        });
+        return;
+      }
 
       if (isResizing && selectedId) {
         const mouseX = (clientX - viewportOffset.x) / zoom;
@@ -486,22 +574,28 @@ const AIBoard = () => {
         setLineStart(null); setActiveTool('select');
       }
     }
-    setDraggedId(null); setIsPanning(false); setIsResizing(false); setResizeHandle(null);
+    setDraggedId(null); setIsPanning(false); setIsResizing(false); setResizeHandle(null); setIsRotating(false); rotationStartRef.current = null;
   };
 
   // --- Wheel zoom ---
   const handleWheel = useCallback((e) => {
     e.preventDefault();
-    const rect = cachedRect.current || canvasRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const mouseX = e.clientX - rect.left, mouseY = e.clientY - rect.top;
-    const factor = e.ctrlKey ? (1 - e.deltaY * 0.005) : (e.deltaY > 0 ? 0.97 : 1.03);
-    setZoom(prev => {
-      const newZoom = Math.min(Math.max(prev * factor, ZOOM_MIN), ZOOM_MAX);
-      const ratio = newZoom / prev;
-      setViewportOffset(off => ({ x: mouseX - ratio * (mouseX - off.x), y: mouseY - ratio * (mouseY - off.y) }));
-      return newZoom;
-    });
+    if (e.ctrlKey) {
+      // Pinch-to-zoom: zoom centered on cursor
+      const rect = cachedRect.current || canvasRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const mouseX = e.clientX - rect.left, mouseY = e.clientY - rect.top;
+      const factor = 1 - e.deltaY * 0.005;
+      setZoom(prev => {
+        const newZoom = Math.min(Math.max(prev * factor, ZOOM_MIN), ZOOM_MAX);
+        const ratio = newZoom / prev;
+        setViewportOffset(off => ({ x: mouseX - ratio * (mouseX - off.x), y: mouseY - ratio * (mouseY - off.y) }));
+        return newZoom;
+      });
+    } else {
+      // Two-finger scroll: pan the canvas
+      setViewportOffset(off => ({ x: off.x - e.deltaX, y: off.y - e.deltaY }));
+    }
   }, []);
 
   // --- Delete ---
@@ -548,6 +642,8 @@ const AIBoard = () => {
   // --- Keyboard shortcuts ---
   useEffect(() => {
     const handler = (e) => {
+      const tag = e.target.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA') return;
       if ((e.key === 'Delete' || e.key === 'Backspace') && (selectedId || selectedIds.length > 0)) { e.preventDefault(); handleDelete(); }
       if ((e.metaKey || e.ctrlKey) && e.key === 'z' && !e.shiftKey) { e.preventDefault(); handleUndo(); }
       if ((e.metaKey || e.ctrlKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) { e.preventDefault(); handleRedo(); }
@@ -611,6 +707,10 @@ const AIBoard = () => {
       };
       setBoardObjects(prev => [...prev, n]);
       setActiveTool('select');
+    } else if (activeTool === 'frame') {
+      const n = { id: nextId.current++, type: 'frame', x: pt.x, y: pt.y, width: 400, height: 300, title: 'Frame' };
+      setBoardObjects(prev => [...prev, n]);
+      setActiveTool('select');
     }
   };
 
@@ -672,7 +772,7 @@ const AIBoard = () => {
           onMouseLeave={handleMouseUp}
           style={{
             width: '100%', height: '100%', position: 'absolute', top: 0, left: 0, overflow: 'hidden',
-            cursor: isPanning ? 'grabbing' : draggedId ? 'grabbing' : activeTool === 'hand' ? 'grab' : activeTool === 'select' ? 'default' : activeTool === 'eraser' ? 'none' : 'crosshair',
+            cursor: isPanning ? 'grabbing' : isRotating ? 'grabbing' : draggedId ? 'grabbing' : activeTool === 'hand' ? 'grab' : activeTool === 'select' ? 'default' : activeTool === 'eraser' ? 'none' : 'crosshair',
             background: `radial-gradient(circle, ${darkMode ? 'rgba(200,220,255,0.25)' : 'rgba(0,0,0,0.15)'} 1px, ${theme.canvasBg} 1px)`,
             backgroundSize: `${24 * zoom}px ${24 * zoom}px`,
             backgroundPosition: `${viewportOffset.x}px ${viewportOffset.y}px`,
@@ -695,6 +795,8 @@ const AIBoard = () => {
                 setBoardObjects={setBoardObjects}
                 setIsResizing={setIsResizing}
                 setResizeHandle={setResizeHandle}
+                setIsRotating={setIsRotating}
+                isMultiSelected={selectedIds.length > 1}
                 theme={theme}
               />
             ))}
@@ -747,14 +849,6 @@ const AIBoard = () => {
         </div>
       </div>
 
-      <div style={{
-        padding: '8px 16px', background: theme.surface,
-        borderTop: `1px solid ${theme.border}`,
-        display: 'flex', alignItems: 'center', fontSize: '12px',
-        color: theme.textMuted, userSelect: 'none',
-      }}>
-        <div>{boardObjects.length} object{boardObjects.length !== 1 ? 's' : ''}</div>
-      </div>
 
       {activeTool === 'eraser' && eraserPos && (
         <div style={{
