@@ -3,7 +3,6 @@ import {
   MousePointer, Hand, Pen, Eraser, Type, ArrowRight, Minus,
   StickyNote, Shapes, Square, Circle, Triangle, Diamond, Hexagon, Star,
   Frame,
-  ChevronsUp, ChevronUp, ChevronDown, ChevronsDown,
   Undo, Redo, Trash2,
 } from 'lucide-react';
 
@@ -94,7 +93,7 @@ export default memo(function Toolbar({
   showStickyMenu, setShowStickyMenu, showShapeMenu, setShowShapeMenu,
   stickyColor, setStickyColor, shapeType, setShapeType,
   selectedId, selectedIds,
-  handleDelete, bringToFront, bringForward, sendBackward, sendToBack,
+  handleDelete,
   handleUndo, handleRedo, historyIndex, historyLength,
   darkMode, theme,
 }) {
@@ -104,7 +103,7 @@ export default memo(function Toolbar({
     <div className="toolbar-scroll" onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} style={{
       position: 'absolute', left: '16px', top: '16px',
       display: 'flex', flexDirection: 'column', gap: '8px', zIndex: 10,
-      maxHeight: 'calc(100vh - 100px)',
+      maxHeight: 'calc(100vh - 100px)', overflowY: 'auto',
       scrollbarWidth: 'none',
     }}>
       {/* Main tools */}
@@ -220,22 +219,6 @@ export default memo(function Toolbar({
         {/* Selection-dependent controls */}
         {hasSelection && (
           <>
-            <div style={{ width: '100%', height: '1px', background: theme.divider, margin: '8px 0' }} />
-            {[
-              { action: bringToFront, icon: ChevronsUp, label: 'Bring to Front' },
-              { action: bringForward, icon: ChevronUp, label: 'Bring Forward' },
-              { action: sendBackward, icon: ChevronDown, label: 'Send Backward' },
-              { action: sendToBack, icon: ChevronsDown, label: 'Send to Back' },
-            ].map(({ action, icon, label }) => (
-              <ToolButton
-                key={label}
-                isActive={false}
-                onClick={action}
-                title={label}
-                icon={icon}
-                theme={theme}
-              />
-            ))}
             <div style={{ width: '100%', height: '1px', background: theme.divider, margin: '8px 0' }} />
             <ToolButton
               isActive={false}
