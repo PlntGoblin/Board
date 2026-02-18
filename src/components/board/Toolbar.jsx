@@ -101,10 +101,10 @@ export default memo(function Toolbar({
   const hasSelection = selectedId || selectedIds.length > 0;
 
   return (
-    <div className="toolbar-scroll" style={{
+    <div className="toolbar-scroll" onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} style={{
       position: 'absolute', left: '16px', top: '16px',
       display: 'flex', flexDirection: 'column', gap: '8px', zIndex: 10,
-      maxHeight: 'calc(100vh - 100px)', overflowY: 'auto',
+      maxHeight: 'calc(100vh - 100px)',
       scrollbarWidth: 'none',
     }}>
       {/* Main tools */}

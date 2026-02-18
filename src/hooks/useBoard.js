@@ -85,5 +85,14 @@ export function useBoard() {
     return res.json();
   }, [headers]);
 
-  return { createBoard, listBoards, loadBoard, saveBoard, deleteBoard, shareBoard, toggleVisibility };
+  const leaveBoard = useCallback(async (id) => {
+    const res = await fetch(`${API_URL}/api/boards/${id}/leave`, {
+      method: 'DELETE',
+      headers: headers(),
+    });
+    if (!res.ok) throw new Error('Failed to leave board');
+    return res.json();
+  }, [headers]);
+
+  return { createBoard, listBoards, loadBoard, saveBoard, deleteBoard, leaveBoard, shareBoard, toggleVisibility };
 }

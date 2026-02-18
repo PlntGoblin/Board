@@ -433,6 +433,11 @@ Rules:
       return;
     }
 
+    if (objId && CREATION_TOOLS.includes(activeTool)) {
+      // Creation tool is active — ignore object interaction, let canvas click handle placement
+      return;
+    }
+
     if (objId) {
       const isMultiKey = e.metaKey || e.ctrlKey;
       if (isMultiKey) {
@@ -704,11 +709,23 @@ Rules:
     return () => window.removeEventListener('click', close);
   }, [showZoomMenu]);
 
+  // --- Tool change (clears selection so creation tools work on top of objects) ---
+  const CREATION_TOOLS = ['text', 'sticky', 'shape', 'frame', 'pen', 'arrow', 'line', 'eraser'];
+  const handleToolChange = useCallback((tool) => {
+    setActiveTool(tool);
+    if (CREATION_TOOLS.includes(tool)) {
+      setSelectedId(null);
+      setSelectedIds([]);
+      setDraggedId(null);
+      setEditingId(null);
+    }
+  }, []);
+
   // --- Canvas click (place objects) ---
   const handleCanvasClick = (e) => {
     setShowStickyMenu(false);
     setShowShapeMenu(false);
-    if (activeTool === 'select' || activeTool === 'hand' || activeTool === 'pen' || activeTool === 'eraser' || activeTool === 'arrow' || activeTool === 'line' || draggedId || isPanning) return;
+    if (activeTool === 'select' || activeTool === 'hand' || activeTool === 'pen' || activeTool === 'eraser' || activeTool === 'arrow' || activeTool === 'line' || isPanning) return;
     const pt = screenToBoard(e);
     if (!pt) return;
 
@@ -801,7 +818,7 @@ Rules:
 
       <div style={{ flex: 1, position: 'relative' }}>
         <Toolbar
-          activeTool={activeTool} setActiveTool={setActiveTool}
+          activeTool={activeTool} setActiveTool={handleToolChange}
           showStickyMenu={showStickyMenu} setShowStickyMenu={setShowStickyMenu}
           showShapeMenu={showShapeMenu} setShowShapeMenu={setShowShapeMenu}
           stickyColor={stickyColor} setStickyColor={setStickyColor}

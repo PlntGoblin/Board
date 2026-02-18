@@ -140,13 +140,42 @@ app.put('/api/boards/:id', authenticate, async (req, res) => {
   res.json(data);
 });
 
-// Delete a board
+// Leave a shared board (collaborator removes themselves) — must be before :id route
+app.delete('/api/boards/:id/leave', authenticate, async (req, res) => {
+  const { error } = await supabase
+    .from('board_collaborators')
+    .delete()
+    .eq('board_id', req.params.id)
+    .eq('user_id', req.user.id);
+
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ success: true });
+});
+
+// Delete a board (owner only — also removes all collaborator records)
 app.delete('/api/boards/:id', authenticate, async (req, res) => {
+  // Verify ownership first
+  const { data: board } = await supabase
+    .from('boards')
+    .select('owner_id')
+    .eq('id', req.params.id)
+    .single();
+
+  if (!board || board.owner_id !== req.user.id) {
+    return res.status(403).json({ error: 'Only the board owner can delete this board' });
+  }
+
+  // Remove all collaborators first
+  await supabase
+    .from('board_collaborators')
+    .delete()
+    .eq('board_id', req.params.id);
+
+  // Delete the board
   const { error } = await supabase
     .from('boards')
     .delete()
-    .eq('id', req.params.id)
-    .eq('owner_id', req.user.id);
+    .eq('id', req.params.id);
 
   if (error) return res.status(500).json({ error: error.message });
   res.json({ success: true });
