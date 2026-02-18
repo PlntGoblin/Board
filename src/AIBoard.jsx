@@ -42,6 +42,7 @@ const AIBoard = () => {
   const [boardLoaded, setBoardLoaded] = useState(false);
   const [isBoardPublic, setIsBoardPublic] = useState(true);
   const [showShareModal, setShowShareModal] = useState(false);
+  const [accessError, setAccessError] = useState(null);
   const darkMode = true;
 
   // --- Tool state ---
@@ -223,8 +224,8 @@ const AIBoard = () => {
           }
         }
         setBoardLoaded(true);
-      } catch {
-        navigate('/');
+      } catch (err) {
+        setAccessError(err.message || 'Unable to load this board');
       }
     };
     load();
@@ -434,6 +435,11 @@ Rules:
       return;
     }
 
+    if (objId && CREATION_TOOLS.includes(activeTool)) {
+      // Creation tool is active — ignore object interaction, let canvas click handle placement
+      return;
+    }
+
     if (objId) {
       const isMultiKey = e.metaKey || e.ctrlKey;
       if (isMultiKey) {
@@ -445,7 +451,11 @@ Rules:
       if (selectedIds.includes(objId) && selectedIds.length > 1) {
         setDraggedId(objId);
         const obj = boardObjects.find(o => o.id === objId);
-        if (obj) setDragOffset({ x: (e.clientX - viewportOffset.x) / zoom - obj.x, y: (e.clientY - viewportOffset.y) / zoom - obj.y });
+        if (obj) {
+          const ox = obj.x ?? obj.x1 ?? (obj.points?.[0]?.x || 0);
+          const oy = obj.y ?? obj.y1 ?? (obj.points?.[0]?.y || 0);
+          setDragOffset({ x: (e.clientX - viewportOffset.x) / zoom - ox, y: (e.clientY - viewportOffset.y) / zoom - oy });
+        }
         e.stopPropagation();
         return;
       }
@@ -453,7 +463,11 @@ Rules:
       setSelectedId(objId);
       setSelectedIds([objId]);
       const obj = boardObjects.find(o => o.id === objId);
-      if (obj) setDragOffset({ x: (e.clientX - viewportOffset.x) / zoom - obj.x, y: (e.clientY - viewportOffset.y) / zoom - obj.y });
+      if (obj) {
+        const ox = obj.x ?? obj.x1 ?? (obj.points?.[0]?.x || 0);
+        const oy = obj.y ?? obj.y1 ?? (obj.points?.[0]?.y || 0);
+        setDragOffset({ x: (e.clientX - viewportOffset.x) / zoom - ox, y: (e.clientY - viewportOffset.y) / zoom - oy });
+      }
       e.stopPropagation();
     } else {
       setSelectedId(null);
@@ -543,7 +557,20 @@ Rules:
             }));
           }
         } else {
-          setBoardObjects(prev => prev.map(obj => obj.id === draggedId ? { ...obj, x: newX, y: newY } : obj));
+          setBoardObjects(prev => prev.map(obj => {
+            if (obj.id !== draggedId) return obj;
+            if (obj.type === 'line' || obj.type === 'arrow') {
+              const dx = newX - (obj.x1 ?? 0);
+              const dy = newY - (obj.y1 ?? 0);
+              return { ...obj, x1: obj.x1 + dx, y1: obj.y1 + dy, x2: obj.x2 + dx, y2: obj.y2 + dy };
+            }
+            if (obj.type === 'path') {
+              const dx = newX - (obj.points[0]?.x ?? 0);
+              const dy = newY - (obj.points[0]?.y ?? 0);
+              return { ...obj, points: obj.points.map(p => ({ x: p.x + dx, y: p.y + dy })) };
+            }
+            return { ...obj, x: newX, y: newY };
+          }));
         }
       }
     });
@@ -684,11 +711,23 @@ Rules:
     return () => window.removeEventListener('click', close);
   }, [showZoomMenu]);
 
+  // --- Tool change (clears selection so creation tools work on top of objects) ---
+  const CREATION_TOOLS = ['text', 'sticky', 'shape', 'frame', 'pen', 'arrow', 'line', 'eraser'];
+  const handleToolChange = useCallback((tool) => {
+    setActiveTool(tool);
+    if (CREATION_TOOLS.includes(tool)) {
+      setSelectedId(null);
+      setSelectedIds([]);
+      setDraggedId(null);
+      setEditingId(null);
+    }
+  }, []);
+
   // --- Canvas click (place objects) ---
   const handleCanvasClick = (e) => {
     setShowStickyMenu(false);
     setShowShapeMenu(false);
-    if (activeTool === 'select' || activeTool === 'hand' || activeTool === 'pen' || activeTool === 'eraser' || activeTool === 'arrow' || activeTool === 'line' || draggedId || isPanning) return;
+    if (activeTool === 'select' || activeTool === 'hand' || activeTool === 'pen' || activeTool === 'eraser' || activeTool === 'arrow' || activeTool === 'line' || isPanning) return;
     const pt = screenToBoard(e);
     if (!pt) return;
 
@@ -716,6 +755,47 @@ Rules:
     }
   };
 
+  // --- Access error screen ---
+  if (accessError) {
+    return (
+      <div style={{
+        width: '100vw', height: '100vh',
+        display: 'flex', flexDirection: 'column',
+        alignItems: 'center', justifyContent: 'center',
+        background: '#0a0a0f', color: '#f0f0f5',
+        fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+      }}>
+        <div style={{
+          background: 'rgba(239,68,68,0.1)',
+          border: '1px solid rgba(239,68,68,0.2)',
+          borderRadius: '16px',
+          padding: '32px',
+          maxWidth: '400px',
+          textAlign: 'center',
+        }}>
+          <h2 style={{ margin: '0 0 12px', fontSize: '20px', fontWeight: '600' }}>
+            Access Denied
+          </h2>
+          <p style={{ margin: '0 0 24px', color: '#94a3b8', fontSize: '14px', lineHeight: '1.6' }}>
+            {accessError}
+          </p>
+          <button
+            onClick={() => navigate('/')}
+            style={{
+              padding: '10px 24px',
+              background: 'linear-gradient(135deg, #38bdf8, #818cf8)',
+              color: 'white', border: 'none', borderRadius: '10px',
+              cursor: 'pointer', fontSize: '14px', fontWeight: '600',
+              boxShadow: '0 0 20px rgba(56,189,248,0.2)',
+            }}
+          >
+            Go to Dashboard
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   // --- Render ---
   return (
     <div style={{ width: '100vw', height: '100vh', display: 'flex', flexDirection: 'column', background: theme.bg }}>
@@ -740,7 +820,7 @@ Rules:
 
       <div style={{ flex: 1, position: 'relative' }}>
         <Toolbar
-          activeTool={activeTool} setActiveTool={setActiveTool}
+          activeTool={activeTool} setActiveTool={handleToolChange}
           showStickyMenu={showStickyMenu} setShowStickyMenu={setShowStickyMenu}
           showShapeMenu={showShapeMenu} setShowShapeMenu={setShowShapeMenu}
           stickyColor={stickyColor} setStickyColor={setStickyColor}

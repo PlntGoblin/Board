@@ -67,6 +67,17 @@ export const STROKE_SIZES = [
   { label: '6', value: 6 },
 ];
 
+export const TEXT_COLORS = [
+  { name: 'white', hex: '#FFFFFF' },
+  { name: 'gray', hex: '#94a3b8' },
+  { name: 'red', hex: '#FF5252' },
+  { name: 'orange', hex: '#FF9800' },
+  { name: 'green', hex: '#4CAF50' },
+  { name: 'blue', hex: '#38bdf8' },
+  { name: 'purple', hex: '#CE93D8' },
+  { name: 'pink', hex: '#F48FB1' },
+];
+
 export const DRAW_COLORS = [
   '#000000', '#FF5252',
   '#FF9800', '#FFEB3B',

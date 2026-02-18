@@ -9,6 +9,8 @@ const app = express();
 const allowedOrigins = [
   'http://localhost:5173',
   'http://localhost:5174',
+  'http://localhost:5175',
+  'http://localhost:5176',
   process.env.FRONTEND_URL,
 ].filter(Boolean).map(o => o.trim().replace(/\/+$/, ''));
 
@@ -138,13 +140,42 @@ app.put('/api/boards/:id', authenticate, async (req, res) => {
   res.json(data);
 });
 
-// Delete a board
+// Leave a shared board (collaborator removes themselves) — must be before :id route
+app.delete('/api/boards/:id/leave', authenticate, async (req, res) => {
+  const { error } = await supabase
+    .from('board_collaborators')
+    .delete()
+    .eq('board_id', req.params.id)
+    .eq('user_id', req.user.id);
+
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ success: true });
+});
+
+// Delete a board (owner only — also removes all collaborator records)
 app.delete('/api/boards/:id', authenticate, async (req, res) => {
+  // Verify ownership first
+  const { data: board } = await supabase
+    .from('boards')
+    .select('owner_id')
+    .eq('id', req.params.id)
+    .single();
+
+  if (!board || board.owner_id !== req.user.id) {
+    return res.status(403).json({ error: 'Only the board owner can delete this board' });
+  }
+
+  // Remove all collaborators first
+  await supabase
+    .from('board_collaborators')
+    .delete()
+    .eq('board_id', req.params.id);
+
+  // Delete the board
   const { error } = await supabase
     .from('boards')
     .delete()
-    .eq('id', req.params.id)
-    .eq('owner_id', req.user.id);
+    .eq('id', req.params.id);
 
   if (error) return res.status(500).json({ error: error.message });
   res.json({ success: true });
@@ -165,20 +196,31 @@ app.post('/api/boards/:id/share', authenticate, async (req, res) => {
     return res.status(403).json({ error: 'Only board owner can share' });
   }
 
-  // Find user by email
+  // Find user by email (try profiles table, then fall back to auth admin API)
+  let userId = null;
   const { data: profile } = await supabase
     .from('profiles')
     .select('id')
     .eq('email', email)
     .single();
 
-  if (!profile) return res.status(404).json({ error: 'User not found' });
+  if (profile) {
+    userId = profile.id;
+  } else {
+    const { data: { users } = {}, error: listErr } = await supabase.auth.admin.listUsers();
+    if (!listErr && users) {
+      const match = users.find(u => u.email === email);
+      if (match) userId = match.id;
+    }
+  }
+
+  if (!userId) return res.status(404).json({ error: 'User not found. They must sign up first.' });
 
   const { error } = await supabase
     .from('board_collaborators')
     .upsert({
       board_id: req.params.id,
-      user_id: profile.id,
+      user_id: userId,
       role: role || 'editor',
     });
 

@@ -1,6 +1,6 @@
 import { memo } from 'react';
-import { Bold, AlignLeft, AlignCenter } from 'lucide-react';
-import { getColor, STICKY_COLORS, FONT_SIZES, SHAPE_COLORS, STROKE_SIZES } from '../../lib/theme';
+import { Bold, AlignLeft, AlignCenter, RotateCw } from 'lucide-react';
+import { getColor, STICKY_COLORS, FONT_SIZES, SHAPE_COLORS, STROKE_SIZES, TEXT_COLORS, DRAW_COLORS } from '../../lib/theme';
 
 export default memo(function BoardObject({
   obj, isSelected, isEditing, editingText,
@@ -36,7 +36,7 @@ export default memo(function BoardObject({
       obj={obj} isSelected={isSelected} isEditing={isEditing}
       editingText={editingText} setEditingId={setEditingId}
       setEditingText={setEditingText} handleMouseDown={handleMouseDown}
-      setBoardObjects={setBoardObjects} theme={theme}
+      setBoardObjects={setBoardObjects} updateProp={updateProp} theme={theme}
       setIsRotating={setIsRotating} isMultiSelected={isMultiSelected}
     />;
   }
@@ -45,9 +45,9 @@ export default memo(function BoardObject({
     return <Frame obj={obj} isSelected={isSelected} isEditing={isEditing} editingText={editingText} setEditingId={setEditingId} setEditingText={setEditingText} setBoardObjects={setBoardObjects} handleMouseDown={handleMouseDown} theme={theme} setIsResizing={setIsResizing} setResizeHandle={setResizeHandle} setIsRotating={setIsRotating} isMultiSelected={isMultiSelected} />;
   }
 
-  if (obj.type === 'path') return <PathDrawing obj={obj} isSelected={isSelected} />;
-  if (obj.type === 'line') return <LineDrawing obj={obj} isSelected={isSelected} />;
-  if (obj.type === 'arrow') return <ArrowDrawing obj={obj} isSelected={isSelected} />;
+  if (obj.type === 'path') return <PathDrawing obj={obj} isSelected={isSelected} handleMouseDown={handleMouseDown} updateProp={updateProp} />;
+  if (obj.type === 'line') return <LineDrawing obj={obj} isSelected={isSelected} handleMouseDown={handleMouseDown} updateProp={updateProp} />;
+  if (obj.type === 'arrow') return <ArrowDrawing obj={obj} isSelected={isSelected} handleMouseDown={handleMouseDown} updateProp={updateProp} />;
 
   return null;
 }, (prev, next) =>
@@ -302,47 +302,130 @@ function Shape({ obj, isSelected, handleMouseDown, updateProp, setIsResizing, se
   );
 }
 
-function TextObject({ obj, isSelected, isEditing, editingText, setEditingId, setEditingText, handleMouseDown, setBoardObjects, theme, setIsRotating, isMultiSelected }) {
+function TextObject({ obj, isSelected, isEditing, editingText, setEditingId, setEditingText, handleMouseDown, setBoardObjects, updateProp, theme, setIsRotating, isMultiSelected }) {
+  const textFontSize = obj.fontSize || 16;
+  const textBold = obj.fontWeight === 'bold';
+  const textAlign = obj.textAlign || 'left';
+  const textColor = obj.color || theme.text;
+  const showToolbar = isSelected || isEditing;
+
   return (
-    <div
-      key={obj.id}
-      onMouseDown={(e) => { if (!isEditing) handleMouseDown(e, obj.id); }}
-      onDoubleClick={(e) => {
-        e.stopPropagation();
-        if (!isEditing) { setEditingId(obj.id); setEditingText(obj.text); }
-      }}
-      style={{
-        position: 'absolute', left: obj.x, top: obj.y,
-        minWidth: obj.width || 100, padding: '8px',
-        border: isSelected ? '2px solid #2196F3' : '2px solid transparent',
-        borderRadius: '4px', cursor: isEditing ? 'text' : 'move',
-        fontSize: '16px', fontFamily: 'system-ui, sans-serif',
-        color: theme.text, userSelect: isEditing ? 'text' : 'none',
-        whiteSpace: 'pre-wrap',
-        transform: obj.rotation ? `rotate(${obj.rotation}deg)` : undefined,
-        transformOrigin: 'center center',
-      }}
-    >
+    <div key={obj.id} style={{ position: 'absolute', left: obj.x, top: obj.y, transform: obj.rotation ? `rotate(${obj.rotation}deg)` : undefined, transformOrigin: 'center center' }}>
       {isSelected && !isEditing && !isMultiSelected && <RotationHandle setIsRotating={setIsRotating} />}
-      {isEditing ? (
-        <input
-          autoFocus
-          type="text"
-          value={editingText}
-          onChange={(e) => setEditingText(e.target.value)}
-          onBlur={() => {
-            setBoardObjects(prev => prev.map(o => o.id === obj.id ? { ...o, text: editingText } : o));
-            setEditingId(null);
-          }}
-          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === 'Escape') e.target.blur(); }}
+      {showToolbar && (
+        <div
+          onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); }}
           style={{
-            width: '100%', border: 'none', outline: 'none', background: 'transparent',
-            fontSize: '16px', fontFamily: 'system-ui, sans-serif', color: theme.text,
+            position: 'absolute', bottom: '100%', left: '50%', transform: 'translateX(-50%)',
+            marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '2px',
+            background: 'rgba(30,30,40,0.95)', backdropFilter: 'blur(12px)',
+            border: '1px solid rgba(255,255,255,0.12)', borderRadius: '10px',
+            padding: '4px 6px', boxShadow: '0 4px 16px rgba(0,0,0,0.3)',
+            whiteSpace: 'nowrap', zIndex: 100,
           }}
-        />
-      ) : (
-        obj.text
+        >
+          {FONT_SIZES.map(fs => (
+            <button
+              key={fs.label}
+              onClick={() => updateProp(obj.id, 'fontSize', fs.value)}
+              style={{
+                width: '26px', height: '26px', border: 'none', borderRadius: '6px',
+                background: textFontSize === fs.value ? 'rgba(56,189,248,0.2)' : 'transparent',
+                color: textFontSize === fs.value ? '#38bdf8' : '#94a3b8',
+                fontSize: '11px', fontWeight: '700', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                transition: 'all 0.15s',
+              }}
+              title={`Font size ${fs.label}`}
+            >
+              {fs.label}
+            </button>
+          ))}
+          <div style={{ width: '1px', height: '18px', background: 'rgba(255,255,255,0.1)', margin: '0 4px' }} />
+          <button
+            onClick={() => updateProp(obj.id, 'fontWeight', textBold ? 'normal' : 'bold')}
+            style={{
+              width: '26px', height: '26px', border: 'none', borderRadius: '6px',
+              background: textBold ? 'rgba(56,189,248,0.2)' : 'transparent',
+              color: textBold ? '#38bdf8' : '#94a3b8',
+              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              transition: 'all 0.15s',
+            }}
+            title="Bold"
+          >
+            <Bold size={13} />
+          </button>
+          {['left', 'center'].map(align => (
+            <button
+              key={align}
+              onClick={() => updateProp(obj.id, 'textAlign', align)}
+              style={{
+                width: '26px', height: '26px', border: 'none', borderRadius: '6px',
+                background: textAlign === align ? 'rgba(56,189,248,0.2)' : 'transparent',
+                color: textAlign === align ? '#38bdf8' : '#94a3b8',
+                cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                transition: 'all 0.15s',
+              }}
+              title={`Align ${align}`}
+            >
+              {align === 'left' ? <AlignLeft size={13} /> : <AlignCenter size={13} />}
+            </button>
+          ))}
+          <div style={{ width: '1px', height: '18px', background: 'rgba(255,255,255,0.1)', margin: '0 4px' }} />
+          {TEXT_COLORS.map(c => (
+            <button
+              key={c.name}
+              onClick={() => updateProp(obj.id, 'color', c.hex)}
+              style={{
+                width: '18px', height: '18px', borderRadius: '50%',
+                border: textColor === c.hex ? '2px solid #fff' : '2px solid transparent',
+                background: c.hex, cursor: 'pointer', padding: 0,
+                boxShadow: textColor === c.hex ? '0 0 6px rgba(255,255,255,0.3)' : 'none',
+                transition: 'all 0.15s',
+              }}
+              title={c.name}
+            />
+          ))}
+        </div>
       )}
+
+      <div
+        onMouseDown={(e) => { if (!isEditing) handleMouseDown(e, obj.id); }}
+        onDoubleClick={(e) => {
+          e.stopPropagation();
+          if (!isEditing) { setEditingId(obj.id); setEditingText(obj.text); }
+        }}
+        style={{
+          minWidth: obj.width || 100, padding: '8px',
+          border: isSelected ? '2px solid #2196F3' : '2px solid transparent',
+          borderRadius: '4px', cursor: isEditing ? 'text' : 'move',
+          fontSize: `${textFontSize}px`, fontFamily: 'system-ui, sans-serif',
+          fontWeight: obj.fontWeight || 'normal', textAlign: textAlign,
+          color: textColor, userSelect: isEditing ? 'text' : 'none',
+          whiteSpace: 'pre-wrap',
+        }}
+      >
+        {isEditing ? (
+          <textarea
+            autoFocus
+            value={editingText}
+            onChange={(e) => setEditingText(e.target.value)}
+            onBlur={() => {
+              setBoardObjects(prev => prev.map(o => o.id === obj.id ? { ...o, text: editingText } : o));
+              setEditingId(null);
+            }}
+            onKeyDown={(e) => { if (e.key === 'Escape') e.target.blur(); }}
+            style={{
+              width: '100%', minHeight: '24px', border: 'none', outline: 'none',
+              background: 'transparent', fontSize: 'inherit', fontWeight: 'inherit',
+              textAlign: 'inherit', fontFamily: 'inherit', resize: 'none',
+              color: 'inherit', whiteSpace: 'pre-wrap',
+            }}
+          />
+        ) : (
+          <span style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{obj.text}</span>
+        )}
+      </div>
     </div>
   );
 }
@@ -417,48 +500,104 @@ function Frame({ obj, isSelected, isEditing, editingText, setEditingId, setEditi
   );
 }
 
-const SVG_STYLE = {
+const SVG_STYLE_INTERACTIVE = {
   position: 'absolute', top: 0, left: 0,
   width: '5000px', height: '5000px',
-  pointerEvents: 'none', overflow: 'visible',
+  overflow: 'visible',
+  pointerEvents: 'none',
 };
 
-function PathDrawing({ obj, isSelected }) {
+function DrawingColorToolbar({ obj, midX, midY, updateProp }) {
+  return (
+    <div
+      onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); }}
+      style={{
+        position: 'absolute', left: midX, top: midY - 40,
+        transform: 'translateX(-50%)',
+        display: 'flex', alignItems: 'center', gap: '2px',
+        background: 'rgba(30,30,40,0.95)', backdropFilter: 'blur(12px)',
+        border: '1px solid rgba(255,255,255,0.12)', borderRadius: '10px',
+        padding: '4px 6px', boxShadow: '0 4px 16px rgba(0,0,0,0.3)',
+        whiteSpace: 'nowrap', zIndex: 100, pointerEvents: 'auto',
+      }}
+    >
+      {DRAW_COLORS.map(c => (
+        <button
+          key={c}
+          onClick={() => updateProp(obj.id, 'color', c)}
+          style={{
+            width: '18px', height: '18px', borderRadius: '50%',
+            border: obj.color === c ? '2px solid #fff' : '2px solid transparent',
+            background: c, cursor: 'pointer', padding: 0,
+            boxShadow: obj.color === c ? '0 0 6px rgba(255,255,255,0.3)' : 'none',
+            transition: 'all 0.15s',
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
+function PathDrawing({ obj, isSelected, handleMouseDown, updateProp }) {
   if (obj.points.length < 2) return null;
   const d = obj.points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
+  const mid = obj.points[Math.floor(obj.points.length / 2)];
   return (
-    <svg key={obj.id} style={SVG_STYLE}>
-      <path d={d} stroke={obj.color} strokeWidth={obj.strokeWidth} fill="none"
-        strokeLinecap="round" strokeLinejoin="round" opacity={isSelected ? 0.7 : 1} />
-    </svg>
+    <>
+      <svg key={obj.id} style={SVG_STYLE_INTERACTIVE}>
+        <path d={d} stroke="transparent" strokeWidth={Math.max(obj.strokeWidth || 3, 16)} fill="none"
+          strokeLinecap="round" strokeLinejoin="round" style={{ cursor: 'pointer', pointerEvents: 'auto' }}
+          onMouseDown={(e) => handleMouseDown(e, obj.id)} />
+        <path d={d} stroke={obj.color} strokeWidth={obj.strokeWidth} fill="none"
+          strokeLinecap="round" strokeLinejoin="round" pointerEvents="none" />
+      </svg>
+      {isSelected && <DrawingColorToolbar obj={obj} midX={mid.x} midY={mid.y} updateProp={updateProp} />}
+    </>
   );
 }
 
-function LineDrawing({ obj, isSelected }) {
+function LineDrawing({ obj, isSelected, handleMouseDown, updateProp }) {
+  const midX = (obj.x1 + obj.x2) / 2;
+  const midY = (obj.y1 + obj.y2) / 2;
   return (
-    <svg key={obj.id} style={SVG_STYLE}>
-      <line x1={obj.x1} y1={obj.y1} x2={obj.x2} y2={obj.y2}
-        stroke={obj.color} strokeWidth={obj.strokeWidth}
-        strokeLinecap="round" opacity={isSelected ? 0.7 : 1} />
-    </svg>
+    <>
+      <svg key={obj.id} style={SVG_STYLE_INTERACTIVE}>
+        <line x1={obj.x1} y1={obj.y1} x2={obj.x2} y2={obj.y2}
+          stroke="transparent" strokeWidth={Math.max(obj.strokeWidth || 3, 16)}
+          strokeLinecap="round" style={{ cursor: 'pointer', pointerEvents: 'auto' }}
+          onMouseDown={(e) => handleMouseDown(e, obj.id)} />
+        <line x1={obj.x1} y1={obj.y1} x2={obj.x2} y2={obj.y2}
+          stroke={obj.color} strokeWidth={obj.strokeWidth}
+          strokeLinecap="round" pointerEvents="none" />
+      </svg>
+      {isSelected && <DrawingColorToolbar obj={obj} midX={midX} midY={midY} updateProp={updateProp} />}
+    </>
   );
 }
 
-function ArrowDrawing({ obj, isSelected }) {
+function ArrowDrawing({ obj, isSelected, handleMouseDown, updateProp }) {
   const arrowSize = 12;
+  const midX = (obj.x1 + obj.x2) / 2;
+  const midY = (obj.y1 + obj.y2) / 2;
   return (
-    <svg key={obj.id} style={SVG_STYLE}>
-      <defs>
-        <marker id={`arrowhead-${obj.id}`} markerWidth={arrowSize} markerHeight={arrowSize}
-          refX={arrowSize - 2} refY={arrowSize / 2} orient="auto">
-          <polygon points={`0 0, ${arrowSize} ${arrowSize / 2}, 0 ${arrowSize}`} fill={obj.color} />
-        </marker>
-      </defs>
-      <line x1={obj.x1} y1={obj.y1} x2={obj.x2} y2={obj.y2}
-        stroke={obj.color} strokeWidth={obj.strokeWidth}
-        strokeLinecap="round" markerEnd={`url(#arrowhead-${obj.id})`}
-        opacity={isSelected ? 0.7 : 1} />
-    </svg>
+    <>
+      <svg key={obj.id} style={SVG_STYLE_INTERACTIVE}>
+        <defs>
+          <marker id={`arrowhead-${obj.id}`} markerWidth={arrowSize} markerHeight={arrowSize}
+            refX={arrowSize - 2} refY={arrowSize / 2} orient="auto">
+            <polygon points={`0 0, ${arrowSize} ${arrowSize / 2}, 0 ${arrowSize}`} fill={obj.color} />
+          </marker>
+        </defs>
+        <line x1={obj.x1} y1={obj.y1} x2={obj.x2} y2={obj.y2}
+          stroke="transparent" strokeWidth={Math.max(obj.strokeWidth || 3, 16)}
+          strokeLinecap="round" style={{ cursor: 'pointer', pointerEvents: 'auto' }}
+          onMouseDown={(e) => handleMouseDown(e, obj.id)} />
+        <line x1={obj.x1} y1={obj.y1} x2={obj.x2} y2={obj.y2}
+          stroke={obj.color} strokeWidth={obj.strokeWidth}
+          strokeLinecap="round" markerEnd={`url(#arrowhead-${obj.id})`} pointerEvents="none" />
+      </svg>
+      {isSelected && <DrawingColorToolbar obj={obj} midX={midX} midY={midY} updateProp={updateProp} />}
+    </>
   );
 }
 
@@ -467,21 +606,26 @@ function RotationHandle({ setIsRotating }) {
     <>
       <div style={{
         position: 'absolute', left: '50%', bottom: -20,
-        width: '1px', height: '20px', background: '#4CAF50',
+        width: '1px', height: '20px', background: 'rgba(255,255,255,0.3)',
         transform: 'translateX(-50%)',
         pointerEvents: 'none', zIndex: 99,
       }} />
       <div
         onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); setIsRotating(true); }}
         style={{
-          position: 'absolute', left: '50%', bottom: -34,
-          width: '14px', height: '14px', background: '#4CAF50',
-          border: '2px solid white', borderRadius: '50%',
+          position: 'absolute', left: '50%', bottom: -46,
+          width: '26px', height: '26px',
+          background: 'rgba(30,30,40,0.9)',
+          border: '1px solid rgba(255,255,255,0.2)',
+          borderRadius: '50%',
           transform: 'translateX(-50%)',
           cursor: 'grab', zIndex: 102,
-          boxShadow: '0 2px 4px rgba(0,0,0,0.3)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
         }}
-      />
+      >
+        <RotateCw size={13} color="rgba(255,255,255,0.8)" />
+      </div>
     </>
   );
 }

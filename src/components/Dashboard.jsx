@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Search, Home, Clock, Star, Grid3x3, List, Trash2, LogOut } from 'lucide-react';
+import { Plus, Search, Home, Clock, Star, Grid3x3, List, Trash2, LogOut, UserMinus } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { useBoard } from '../hooks/useBoard';
 
@@ -122,7 +122,7 @@ function BoardThumbnail({ boardData }) {
 
 export default function Dashboard() {
   const { user, signOut } = useAuth();
-  const { listBoards, createBoard, deleteBoard, saveBoard } = useBoard();
+  const { listBoards, createBoard, deleteBoard, leaveBoard, saveBoard } = useBoard();
   const navigate = useNavigate();
   const [boards, setBoards] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -180,6 +180,15 @@ export default function Dashboard() {
   const handleDelete = async (id) => {
     try {
       await deleteBoard(id);
+      setBoards(prev => prev.filter(b => b.id !== id));
+    } catch {
+      // board list stays unchanged on failure
+    }
+  };
+
+  const handleLeave = async (id) => {
+    try {
+      await leaveBoard(id);
       setBoards(prev => prev.filter(b => b.id !== id));
     } catch {
       // board list stays unchanged on failure
@@ -911,30 +920,57 @@ export default function Dashboard() {
                       >
                         <Star size={14} fill={isStarred ? '#facc15' : 'none'} />
                       </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (window.confirm('Delete this board?')) handleDelete(board.id);
-                        }}
-                        style={{
-                          width: '28px', height: '28px',
-                          border: 'none', background: 'transparent',
-                          borderRadius: '8px',
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          cursor: 'pointer', color: '#475569',
-                          transition: 'all 0.15s',
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.background = 'rgba(239,68,68,0.15)';
-                          e.currentTarget.style.color = '#fca5a5';
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.background = 'transparent';
-                          e.currentTarget.style.color = '#475569';
-                        }}
-                      >
-                        <Trash2 size={14} />
-                      </button>
+                      {board.role === 'collaborator' ? (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (window.confirm('Leave this shared board?')) handleLeave(board.id);
+                          }}
+                          style={{
+                            width: '28px', height: '28px',
+                            border: 'none', background: 'transparent',
+                            borderRadius: '8px',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            cursor: 'pointer', color: '#475569',
+                            transition: 'all 0.15s',
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.background = 'rgba(239,68,68,0.15)';
+                            e.currentTarget.style.color = '#fca5a5';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.background = 'transparent';
+                            e.currentTarget.style.color = '#475569';
+                          }}
+                        >
+                          <UserMinus size={14} />
+                        </button>
+                      ) : (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (window.confirm('Delete this board?')) handleDelete(board.id);
+                          }}
+                          style={{
+                            width: '28px', height: '28px',
+                            border: 'none', background: 'transparent',
+                            borderRadius: '8px',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            cursor: 'pointer', color: '#475569',
+                            transition: 'all 0.15s',
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.background = 'rgba(239,68,68,0.15)';
+                            e.currentTarget.style.color = '#fca5a5';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.background = 'transparent';
+                            e.currentTarget.style.color = '#475569';
+                          }}
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      )}
                     </div>
                   </div>
                 );
@@ -1021,30 +1057,57 @@ export default function Dashboard() {
                         >
                           <Star size={14} fill={isStarred ? '#facc15' : 'none'} />
                         </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (window.confirm('Delete this board?')) handleDelete(board.id);
-                          }}
-                          style={{
-                            width: '28px', height: '28px',
-                            border: 'none', background: 'transparent',
-                            borderRadius: '8px',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            cursor: 'pointer', color: '#475569',
-                            flexShrink: 0, transition: 'all 0.15s',
-                          }}
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.background = 'rgba(239,68,68,0.15)';
-                            e.currentTarget.style.color = '#fca5a5';
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.background = 'transparent';
-                            e.currentTarget.style.color = '#475569';
-                          }}
-                        >
-                          <Trash2 size={14} />
-                        </button>
+                        {board.role === 'collaborator' ? (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (window.confirm('Leave this shared board?')) handleLeave(board.id);
+                            }}
+                            style={{
+                              width: '28px', height: '28px',
+                              border: 'none', background: 'transparent',
+                              borderRadius: '8px',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              cursor: 'pointer', color: '#475569',
+                              flexShrink: 0, transition: 'all 0.15s',
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.background = 'rgba(239,68,68,0.15)';
+                              e.currentTarget.style.color = '#fca5a5';
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.background = 'transparent';
+                              e.currentTarget.style.color = '#475569';
+                            }}
+                          >
+                            <UserMinus size={14} />
+                          </button>
+                        ) : (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (window.confirm('Delete this board?')) handleDelete(board.id);
+                            }}
+                            style={{
+                              width: '28px', height: '28px',
+                              border: 'none', background: 'transparent',
+                              borderRadius: '8px',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              cursor: 'pointer', color: '#475569',
+                              flexShrink: 0, transition: 'all 0.15s',
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.background = 'rgba(239,68,68,0.15)';
+                              e.currentTarget.style.color = '#fca5a5';
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.background = 'transparent';
+                              e.currentTarget.style.color = '#475569';
+                            }}
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>
