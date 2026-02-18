@@ -711,12 +711,13 @@ export default function Dashboard() {
                       background: 'rgba(255,255,255,0.03)',
                       border: '1px solid rgba(255,255,255,0.08)',
                       borderRadius: '14px',
-                      padding: '20px 18px',
+                      padding: '24px 18px',
                       cursor: 'pointer',
-                      textAlign: 'left',
+                      textAlign: 'center',
                       transition: 'all 0.25s',
                       display: 'flex',
                       flexDirection: 'column',
+                      alignItems: 'center',
                       gap: '10px',
                     }}
                     onMouseEnter={(e) => {
@@ -731,11 +732,11 @@ export default function Dashboard() {
                     }}
                   >
                     <div style={{
-                      width: '40px', height: '40px',
-                      borderRadius: '10px',
+                      width: '44px', height: '44px',
+                      borderRadius: '12px',
                       background: `${tpl.color}18`,
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      fontSize: '20px',
+                      fontSize: '22px',
                     }}>
                       {tpl.icon}
                     </div>
