@@ -161,8 +161,8 @@ export default function Dashboard() {
     try {
       const data = await listBoards();
       setBoards(data);
-    } catch (err) {
-      console.error('Failed to load boards:', err);
+    } catch {
+      // errors handled silently; loading state always clears
     } finally {
       setLoading(false);
     }
@@ -172,8 +172,8 @@ export default function Dashboard() {
     try {
       const board = await createBoard('Untitled Board');
       navigate(`/board/${board.id}`);
-    } catch (err) {
-      console.error('Failed to create board:', err);
+    } catch {
+      // navigation only happens on success
     }
   };
 
@@ -181,8 +181,8 @@ export default function Dashboard() {
     try {
       await deleteBoard(id);
       setBoards(prev => prev.filter(b => b.id !== id));
-    } catch (err) {
-      console.error('Failed to delete board:', err);
+    } catch {
+      // board list stays unchanged on failure
     }
   };
 
@@ -261,8 +261,8 @@ export default function Dashboard() {
       const boardData = { objects: template.objects, nextId: template.objects.length + 1 };
       await saveBoard(board.id, boardData, template.name);
       navigate(`/board/${board.id}`);
-    } catch (err) {
-      console.error('Failed to create from template:', err);
+    } catch {
+      // navigation only happens on success
     }
   };
 
@@ -503,7 +503,7 @@ export default function Dashboard() {
         <div style={{ padding: '12px 16px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
           <button
             onClick={async () => {
-              try { await signOut(); } catch (err) { console.error('Sign out failed:', err); }
+              try { await signOut(); } catch { /* sign out errors are non-fatal */ }
             }}
             style={{
               width: '100%',
@@ -658,7 +658,7 @@ export default function Dashboard() {
                   </div>
                   <button
                     onClick={async () => {
-                      try { await signOut(); } catch (err) { console.error(err); }
+                      try { await signOut(); } catch { /* sign out errors are non-fatal */ }
                     }}
                     style={{
                       width: '100%', padding: '12px 16px',

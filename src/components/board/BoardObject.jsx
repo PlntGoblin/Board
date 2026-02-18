@@ -1,0 +1,410 @@
+import { memo } from 'react';
+import { Bold, AlignLeft, AlignCenter } from 'lucide-react';
+import { getColor, STICKY_COLORS, FONT_SIZES, SHAPE_COLORS, STROKE_SIZES } from '../../lib/theme';
+
+export default memo(function BoardObject({
+  obj, isSelected, isEditing, editingText,
+  setEditingId, setEditingText,
+  handleMouseDown, setBoardObjects,
+  setIsResizing, setResizeHandle, theme,
+}) {
+  const updateProp = (id, prop, value) => {
+    setBoardObjects(prev => prev.map(o => o.id === id ? { ...o, [prop]: value } : o));
+  };
+
+  if (obj.type === 'stickyNote') {
+    return <StickyNote
+      obj={obj} isSelected={isSelected} isEditing={isEditing}
+      editingText={editingText} setEditingId={setEditingId}
+      setEditingText={setEditingText} handleMouseDown={handleMouseDown}
+      setBoardObjects={setBoardObjects} updateProp={updateProp}
+    />;
+  }
+
+  if (obj.type === 'shape') {
+    return <Shape
+      obj={obj} isSelected={isSelected}
+      handleMouseDown={handleMouseDown} updateProp={updateProp}
+      setIsResizing={setIsResizing} setResizeHandle={setResizeHandle}
+    />;
+  }
+
+  if (obj.type === 'text') {
+    return <TextObject
+      obj={obj} isSelected={isSelected} isEditing={isEditing}
+      editingText={editingText} setEditingId={setEditingId}
+      setEditingText={setEditingText} handleMouseDown={handleMouseDown}
+      setBoardObjects={setBoardObjects} theme={theme}
+    />;
+  }
+
+  if (obj.type === 'frame') {
+    return <Frame obj={obj} isSelected={isSelected} handleMouseDown={handleMouseDown} theme={theme} />;
+  }
+
+  if (obj.type === 'path') return <PathDrawing obj={obj} isSelected={isSelected} />;
+  if (obj.type === 'line') return <LineDrawing obj={obj} isSelected={isSelected} />;
+  if (obj.type === 'arrow') return <ArrowDrawing obj={obj} isSelected={isSelected} />;
+
+  return null;
+}, (prev, next) =>
+  prev.obj === next.obj &&
+  prev.isSelected === next.isSelected &&
+  prev.isEditing === next.isEditing &&
+  prev.editingText === next.editingText &&
+  prev.theme === next.theme
+)
+
+function StickyNote({ obj, isSelected, isEditing, editingText, setEditingId, setEditingText, handleMouseDown, setBoardObjects, updateProp }) {
+  const noteFontSize = obj.fontSize || 14;
+  const noteBold = obj.fontWeight === 'bold';
+  const noteAlign = obj.textAlign || 'left';
+  const showToolbar = isSelected || isEditing;
+
+  return (
+    <div key={obj.id} style={{ position: 'absolute', left: obj.x, top: obj.y }}>
+      {showToolbar && (
+        <div
+          onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); }}
+          style={{
+            position: 'absolute', bottom: '100%', left: '50%', transform: 'translateX(-50%)',
+            marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '2px',
+            background: 'rgba(30,30,40,0.95)', backdropFilter: 'blur(12px)',
+            border: '1px solid rgba(255,255,255,0.12)', borderRadius: '10px',
+            padding: '4px 6px', boxShadow: '0 4px 16px rgba(0,0,0,0.3)',
+            whiteSpace: 'nowrap', zIndex: 100,
+          }}
+        >
+          {FONT_SIZES.map(fs => (
+            <button
+              key={fs.label}
+              onClick={() => updateProp(obj.id, 'fontSize', fs.value)}
+              style={{
+                width: '26px', height: '26px', border: 'none', borderRadius: '6px',
+                background: noteFontSize === fs.value ? 'rgba(56,189,248,0.2)' : 'transparent',
+                color: noteFontSize === fs.value ? '#38bdf8' : '#94a3b8',
+                fontSize: '11px', fontWeight: '700', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                transition: 'all 0.15s',
+              }}
+              title={`Font size ${fs.label}`}
+            >
+              {fs.label}
+            </button>
+          ))}
+          <div style={{ width: '1px', height: '18px', background: 'rgba(255,255,255,0.1)', margin: '0 4px' }} />
+          <button
+            onClick={() => updateProp(obj.id, 'fontWeight', noteBold ? 'normal' : 'bold')}
+            style={{
+              width: '26px', height: '26px', border: 'none', borderRadius: '6px',
+              background: noteBold ? 'rgba(56,189,248,0.2)' : 'transparent',
+              color: noteBold ? '#38bdf8' : '#94a3b8',
+              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              transition: 'all 0.15s',
+            }}
+            title="Bold"
+          >
+            <Bold size={13} />
+          </button>
+          {['left', 'center'].map(align => (
+            <button
+              key={align}
+              onClick={() => updateProp(obj.id, 'textAlign', align)}
+              style={{
+                width: '26px', height: '26px', border: 'none', borderRadius: '6px',
+                background: noteAlign === align ? 'rgba(56,189,248,0.2)' : 'transparent',
+                color: noteAlign === align ? '#38bdf8' : '#94a3b8',
+                cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                transition: 'all 0.15s',
+              }}
+              title={`Align ${align}`}
+            >
+              {align === 'left' ? <AlignLeft size={13} /> : <AlignCenter size={13} />}
+            </button>
+          ))}
+          <div style={{ width: '1px', height: '18px', background: 'rgba(255,255,255,0.1)', margin: '0 4px' }} />
+          {STICKY_COLORS.map(c => (
+            <button
+              key={c}
+              onClick={() => updateProp(obj.id, 'color', c)}
+              style={{
+                width: '18px', height: '18px', borderRadius: '50%',
+                border: obj.color === c ? '2px solid #fff' : '2px solid transparent',
+                background: getColor(c), cursor: 'pointer', padding: 0,
+                boxShadow: obj.color === c ? '0 0 6px rgba(255,255,255,0.3)' : 'none',
+                transition: 'all 0.15s',
+              }}
+              title={c}
+            />
+          ))}
+        </div>
+      )}
+
+      <div
+        onMouseDown={(e) => { if (!isEditing) handleMouseDown(e, obj.id); }}
+        onDoubleClick={(e) => {
+          e.stopPropagation();
+          if (!isEditing) { setEditingId(obj.id); setEditingText(obj.text); }
+        }}
+        style={{
+          width: obj.width, height: obj.height,
+          backgroundColor: getColor(obj.color),
+          border: isSelected ? '3px solid #2196F3' : '1px solid rgba(0,0,0,0.08)',
+          borderRadius: '2px 2px 4px 4px', padding: '16px',
+          cursor: isEditing ? 'text' : 'move',
+          boxShadow: '0 1px 1px rgba(0,0,0,0.04), 0 4px 6px rgba(0,0,0,0.06), 0 10px 14px -4px rgba(0,0,0,0.1), 2px 12px 16px -2px rgba(0,0,0,0.08)',
+          fontSize: `${noteFontSize}px`, fontWeight: obj.fontWeight || 'normal',
+          textAlign: noteAlign, overflow: 'auto',
+          userSelect: isEditing ? 'text' : 'none', boxSizing: 'border-box',
+          position: 'relative',
+        }}
+      >
+        <div style={{
+          position: 'absolute', top: 0, left: 0, right: 0, height: '6px',
+          background: 'linear-gradient(180deg, rgba(0,0,0,0.06) 0%, transparent 100%)',
+          borderRadius: '2px 2px 0 0', pointerEvents: 'none',
+        }} />
+        {isEditing ? (
+          <textarea
+            autoFocus
+            value={editingText}
+            onChange={(e) => setEditingText(e.target.value)}
+            onBlur={() => {
+              setBoardObjects(prev => prev.map(o => o.id === obj.id ? { ...o, text: editingText } : o));
+              setEditingId(null);
+            }}
+            onKeyDown={(e) => { if (e.key === 'Escape') setEditingId(null); }}
+            style={{
+              width: '100%', height: '100%', border: 'none', outline: 'none',
+              background: 'transparent', fontSize: 'inherit', fontWeight: 'inherit',
+              textAlign: 'inherit', fontFamily: 'inherit', resize: 'none', color: 'inherit',
+            }}
+          />
+        ) : (
+          <span style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{obj.text}</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function Shape({ obj, isSelected, handleMouseDown, updateProp, setIsResizing, setResizeHandle }) {
+  const w = obj.width || 100;
+  const h = obj.height || 100;
+  const fillColor = getColor(obj.color);
+  const userStrokeW = obj.strokeWidth ?? 2;
+  const strokeColor = isSelected ? '#2196F3' : (obj.strokeColor || 'rgba(0,0,0,0.3)');
+  const strokeW = isSelected ? Math.max(userStrokeW, 3) : userStrokeW;
+
+  const getShapePath = () => {
+    switch (obj.shapeType) {
+      case 'circle':
+        return <ellipse cx={w/2} cy={h/2} rx={w/2 - 2} ry={h/2 - 2} fill={fillColor} stroke={strokeColor} strokeWidth={strokeW} />;
+      case 'triangle':
+        return <polygon points={`${w/2},2 ${w-2},${h-2} 2,${h-2}`} fill={fillColor} stroke={strokeColor} strokeWidth={strokeW} strokeLinejoin="round" />;
+      case 'diamond':
+        return <polygon points={`${w/2},2 ${w-2},${h/2} ${w/2},${h-2} 2,${h/2}`} fill={fillColor} stroke={strokeColor} strokeWidth={strokeW} strokeLinejoin="round" />;
+      case 'hexagon': {
+        const cx = w/2, cy = h/2, rx = w/2 - 2, ry = h/2 - 2;
+        const pts = Array.from({length: 6}, (_, i) => {
+          const a = Math.PI / 3 * i - Math.PI / 2;
+          return `${cx + rx * Math.cos(a)},${cy + ry * Math.sin(a)}`;
+        }).join(' ');
+        return <polygon points={pts} fill={fillColor} stroke={strokeColor} strokeWidth={strokeW} strokeLinejoin="round" />;
+      }
+      case 'star': {
+        const cx = w/2, cy = h/2, outer = Math.min(w, h)/2 - 2, inner = outer * 0.4;
+        const pts = Array.from({length: 10}, (_, i) => {
+          const a = Math.PI / 5 * i - Math.PI / 2;
+          const r = i % 2 === 0 ? outer : inner;
+          return `${cx + r * Math.cos(a)},${cy + r * Math.sin(a)}`;
+        }).join(' ');
+        return <polygon points={pts} fill={fillColor} stroke={strokeColor} strokeWidth={strokeW} strokeLinejoin="round" />;
+      }
+      default:
+        return <rect x={1} y={1} width={w - 2} height={h - 2} rx={4} fill={fillColor} stroke={strokeColor} strokeWidth={strokeW} />;
+    }
+  };
+
+  return (
+    <div key={obj.id} style={{ position: 'absolute', left: obj.x, top: obj.y, width: w, height: h }}>
+      {isSelected && (
+        <div
+          onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); }}
+          style={{
+            position: 'absolute', bottom: '100%', left: '50%', transform: 'translateX(-50%)',
+            marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '2px',
+            background: 'rgba(30,30,40,0.95)', backdropFilter: 'blur(12px)',
+            border: '1px solid rgba(255,255,255,0.12)', borderRadius: '10px',
+            padding: '4px 6px', boxShadow: '0 4px 16px rgba(0,0,0,0.3)',
+            whiteSpace: 'nowrap', zIndex: 100,
+          }}
+        >
+          {SHAPE_COLORS.map(c => (
+            <button
+              key={c.name}
+              onClick={() => updateProp(obj.id, 'color', c.name)}
+              style={{
+                width: '18px', height: '18px', borderRadius: '50%',
+                border: obj.color === c.name ? '2px solid #fff' : '2px solid transparent',
+                background: c.hex, cursor: 'pointer', padding: 0,
+                boxShadow: obj.color === c.name ? '0 0 6px rgba(255,255,255,0.3)' : 'none',
+                transition: 'all 0.15s',
+              }}
+              title={c.name}
+            />
+          ))}
+          <div style={{ width: '1px', height: '18px', background: 'rgba(255,255,255,0.1)', margin: '0 4px' }} />
+          {STROKE_SIZES.map(s => (
+            <button
+              key={s.value}
+              onClick={() => updateProp(obj.id, 'strokeWidth', s.value)}
+              style={{
+                width: '26px', height: '26px', border: 'none', borderRadius: '6px',
+                background: userStrokeW === s.value ? 'rgba(56,189,248,0.2)' : 'transparent',
+                color: userStrokeW === s.value ? '#38bdf8' : '#94a3b8',
+                cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                transition: 'all 0.15s', padding: 0,
+              }}
+              title={`Stroke ${s.value}px`}
+            >
+              <div style={{
+                width: '14px', height: `${Math.max(s.value, 1)}px`,
+                background: userStrokeW === s.value ? '#38bdf8' : '#94a3b8',
+                borderRadius: '1px',
+              }} />
+            </button>
+          ))}
+        </div>
+      )}
+
+      <svg width={w} height={h} onMouseDown={(e) => handleMouseDown(e, obj.id)} style={{ cursor: 'move', display: 'block' }}>
+        {getShapePath()}
+      </svg>
+
+      {isSelected && (
+        <div
+          onMouseDown={(e) => { e.stopPropagation(); setIsResizing(true); setResizeHandle('se'); }}
+          style={{
+            position: 'absolute', bottom: -4, right: -4,
+            width: '12px', height: '12px', background: '#2196F3',
+            border: '2px solid white', borderRadius: '50%',
+            cursor: 'nwse-resize', zIndex: 1000,
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function TextObject({ obj, isSelected, isEditing, editingText, setEditingId, setEditingText, handleMouseDown, setBoardObjects, theme }) {
+  return (
+    <div
+      key={obj.id}
+      onMouseDown={(e) => { if (!isEditing) handleMouseDown(e, obj.id); }}
+      onDoubleClick={(e) => {
+        e.stopPropagation();
+        if (!isEditing) { setEditingId(obj.id); setEditingText(obj.text); }
+      }}
+      style={{
+        position: 'absolute', left: obj.x, top: obj.y,
+        minWidth: obj.width || 100, padding: '8px',
+        border: isSelected ? '2px solid #2196F3' : '2px solid transparent',
+        borderRadius: '4px', cursor: isEditing ? 'text' : 'move',
+        fontSize: '16px', fontFamily: 'system-ui, sans-serif',
+        color: theme.text, userSelect: isEditing ? 'text' : 'none',
+        whiteSpace: 'pre-wrap',
+      }}
+    >
+      {isEditing ? (
+        <input
+          autoFocus
+          type="text"
+          value={editingText}
+          onChange={(e) => setEditingText(e.target.value)}
+          onBlur={() => {
+            setBoardObjects(prev => prev.map(o => o.id === obj.id ? { ...o, text: editingText } : o));
+            setEditingId(null);
+          }}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === 'Escape') e.target.blur(); }}
+          style={{
+            width: '100%', border: 'none', outline: 'none', background: 'transparent',
+            fontSize: '16px', fontFamily: 'system-ui, sans-serif', color: theme.text,
+          }}
+        />
+      ) : (
+        obj.text
+      )}
+    </div>
+  );
+}
+
+function Frame({ obj, isSelected, handleMouseDown, theme }) {
+  return (
+    <div
+      key={obj.id}
+      onMouseDown={(e) => handleMouseDown(e, obj.id)}
+      style={{
+        position: 'absolute', left: obj.x, top: obj.y,
+        width: obj.width, height: obj.height,
+        border: isSelected ? '3px solid #2196F3' : `2px dashed ${theme.textSecondary}`,
+        borderRadius: '8px', cursor: 'move',
+        backgroundColor: 'rgba(255,255,255,0.05)',
+      }}
+    >
+      <div style={{
+        position: 'absolute', top: -30, left: 0,
+        padding: '4px 12px', backgroundColor: '#333',
+        color: 'white', borderRadius: '4px',
+        fontSize: '14px', fontWeight: 'bold',
+      }}>
+        {obj.title}
+      </div>
+    </div>
+  );
+}
+
+const SVG_STYLE = {
+  position: 'absolute', top: 0, left: 0,
+  width: '5000px', height: '5000px',
+  pointerEvents: 'none', overflow: 'visible',
+};
+
+function PathDrawing({ obj, isSelected }) {
+  if (obj.points.length < 2) return null;
+  const d = obj.points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
+  return (
+    <svg key={obj.id} style={SVG_STYLE}>
+      <path d={d} stroke={obj.color} strokeWidth={obj.strokeWidth} fill="none"
+        strokeLinecap="round" strokeLinejoin="round" opacity={isSelected ? 0.7 : 1} />
+    </svg>
+  );
+}
+
+function LineDrawing({ obj, isSelected }) {
+  return (
+    <svg key={obj.id} style={SVG_STYLE}>
+      <line x1={obj.x1} y1={obj.y1} x2={obj.x2} y2={obj.y2}
+        stroke={obj.color} strokeWidth={obj.strokeWidth}
+        strokeLinecap="round" opacity={isSelected ? 0.7 : 1} />
+    </svg>
+  );
+}
+
+function ArrowDrawing({ obj, isSelected }) {
+  const arrowSize = 12;
+  return (
+    <svg key={obj.id} style={SVG_STYLE}>
+      <defs>
+        <marker id={`arrowhead-${obj.id}`} markerWidth={arrowSize} markerHeight={arrowSize}
+          refX={arrowSize - 2} refY={arrowSize / 2} orient="auto">
+          <polygon points={`0 0, ${arrowSize} ${arrowSize / 2}, 0 ${arrowSize}`} fill={obj.color} />
+        </marker>
+      </defs>
+      <line x1={obj.x1} y1={obj.y1} x2={obj.x2} y2={obj.y2}
+        stroke={obj.color} strokeWidth={obj.strokeWidth}
+        strokeLinecap="round" markerEnd={`url(#arrowhead-${obj.id})`}
+        opacity={isSelected ? 0.7 : 1} />
+    </svg>
+  );
+}

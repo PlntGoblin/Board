@@ -1,8 +1,11 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../lib/supabase';
+import { CURSOR_THROTTLE_MS } from '../lib/config';
+import { getDisplayName } from '../lib/utils';
 
 export function usePresence(boardId, user) {
   const [onlineUsers, setOnlineUsers] = useState([]);
+  const [cursors, setCursors] = useState({});
   const channelRef = useRef(null);
   const userRef = useRef(user);
   const lastCursorUpdate = useRef(0);
@@ -27,16 +30,41 @@ export function usePresence(boardId, user) {
     presenceChannel
       .on('presence', { event: 'sync' }, syncUsers)
       .on('presence', { event: 'join' }, syncUsers)
-      .on('presence', { event: 'leave' }, syncUsers)
+      .on('presence', { event: 'leave' }, ({ leftPresences }) => {
+        syncUsers();
+        // Clean up cursors for departed users
+        if (leftPresences) {
+          setCursors(prev => {
+            const next = { ...prev };
+            let changed = false;
+            for (const p of leftPresences) {
+              if (next[p.user_id]) {
+                delete next[p.user_id];
+                changed = true;
+              }
+            }
+            return changed ? next : prev;
+          });
+        }
+      })
+      .on('broadcast', { event: 'cursor-update' }, (payload) => {
+        const { user_id, x, y } = payload.payload;
+        if (user_id === user.id) return;
+        setCursors(prev => {
+          const existing = prev[user_id];
+          if (existing && existing.x === x && existing.y === y) return prev;
+          return { ...prev, [user_id]: { x, y } };
+        });
+      })
       .subscribe(async (status) => {
         if (status === 'SUBSCRIBED') {
           channelRef.current = presenceChannel;
+          // Track user info only (no cursor) — cursor goes via broadcast
           await presenceChannel.track({
             user_id: user.id,
             email: user.email,
-            display_name: user.user_metadata?.display_name || user.email?.split('@')[0] || 'User',
+            display_name: getDisplayName(user),
             online_at: new Date().toISOString(),
-            cursor: { x: 0, y: 0 },
           });
           // Immediately read presence state after tracking
           syncUsers();
@@ -60,27 +88,25 @@ export function usePresence(boardId, user) {
     const now = Date.now();
     const elapsed = now - lastCursorUpdate.current;
 
-    const doTrack = () => {
-      channel.track({
-        user_id: u.id,
-        email: u.email,
-        display_name: u.user_metadata?.display_name || u.email?.split('@')[0] || 'User',
-        online_at: new Date().toISOString(),
-        cursor: { x, y },
+    const doSend = () => {
+      channel.send({
+        type: 'broadcast',
+        event: 'cursor-update',
+        payload: { user_id: u.id, x, y },
       });
     };
 
-    if (elapsed >= 50) {
+    if (elapsed >= CURSOR_THROTTLE_MS) {
       lastCursorUpdate.current = now;
-      doTrack();
+      doSend();
     } else {
       clearTimeout(pendingCursorUpdate.current);
       pendingCursorUpdate.current = setTimeout(() => {
         lastCursorUpdate.current = Date.now();
-        doTrack();
-      }, 50 - elapsed);
+        doSend();
+      }, CURSOR_THROTTLE_MS - elapsed);
     }
   }, []);
 
-  return { onlineUsers, updateCursor };
+  return { onlineUsers, cursors, updateCursor };
 }

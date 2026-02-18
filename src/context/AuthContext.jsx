@@ -1,5 +1,7 @@
 import { createContext, useState, useEffect } from 'react';
-import { supabase } from '../lib/supabase';
+import { supabase, supabaseUrl } from '../lib/supabase';
+
+const supabaseStorageKey = `sb-${new URL(supabaseUrl).hostname.split('.')[0]}-auth-token`;
 
 export const AuthContext = createContext(null);
 
@@ -23,9 +25,8 @@ export function AuthProvider({ children }) {
     supabase.auth.getSession()
       .then(({ data: { session }, error }) => {
         if (error) {
-          console.error('Session error:', error);
           // Clear corrupted session data
-          localStorage.removeItem('sb-rdplazpitzyfpdznfktb-auth-token');
+          localStorage.removeItem(supabaseStorageKey);
           sessionStorage.clear();
           setSession(null);
           setUser(null);
@@ -38,10 +39,9 @@ export function AuthProvider({ children }) {
         }
         setLoading(false);
       })
-      .catch((err) => {
-        console.error('Failed to get session:', err);
+      .catch(() => {
         // Clear all auth data on error
-        localStorage.removeItem('sb-rdplazpitzyfpdznfktb-auth-token');
+        localStorage.removeItem(supabaseStorageKey);
         sessionStorage.clear();
         setSession(null);
         setUser(null);

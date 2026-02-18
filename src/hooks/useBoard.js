@@ -1,7 +1,6 @@
 import { useCallback } from 'react';
 import { useAuth } from './useAuth';
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+import { API_URL } from '../lib/config';
 
 export function useBoard() {
   const { session } = useAuth();
