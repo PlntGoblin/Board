@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from './hooks/useAuth';
+import { supabase } from './lib/supabase';
 import { useBoard } from './hooks/useBoard';
 import { useAutoSave } from './hooks/useAutoSave';
 import { usePresence } from './hooks/usePresence';
@@ -23,7 +24,7 @@ const ERASER_THRESHOLD = 12;
 const AIBoard = () => {
   const { id: boardId } = useParams();
   const navigate = useNavigate();
-  const { user, session } = useAuth();
+  const { user } = useAuth();
   const { loadBoard, saveBoard } = useBoard();
   const { onlineUsers, cursors, updateCursor } = usePresence(boardId, user);
 
@@ -357,9 +358,10 @@ Rules:
       let continueProcessing = true;
 
       while (continueProcessing) {
+        const { data: { session: freshSession } } = await supabase.auth.getSession();
         const response = await fetch(`${API_URL}/api/messages`, {
           method: "POST",
-          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${session?.access_token}` },
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${freshSession?.access_token}` },
           body: JSON.stringify({
             model: "gpt-4o-mini",
             max_completion_tokens: 4096,
