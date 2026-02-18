@@ -1,291 +1,193 @@
-# The Board - AI-Powered Collaborative Whiteboard
+# Dark Matters - Real-Time Collaborative Whiteboard
 
-An intelligent, infinite canvas whiteboard application powered by Claude AI that allows you to create, manipulate, and organize visual elements using natural language commands. Think Miro or FigJam, but with an AI assistant that understands what you want to build.
+A real-time collaborative whiteboard with an infinite canvas, multiplayer presence, and an AI assistant. Built with React, Express, and Supabase.
 
-![Version](https://img.shields.io/badge/version-0.0.0-blue.svg)
-![React](https://img.shields.io/badge/react-19.2.0-blue.svg)
-![Claude](https://img.shields.io/badge/Claude-Sonnet%204-purple.svg)
+**Live:** [board-lilac-sigma.vercel.app](https://board-lilac-sigma.vercel.app)
+
+## Tech Stack
+
+| Layer | Technology | Hosting |
+|-------|-----------|---------|
+| Frontend | React 19, Vite 7, React Router 7 | Vercel |
+| Backend API | Node.js, Express 5 | Railway |
+| Database | Supabase (PostgreSQL) | Supabase Cloud |
+| Auth | Supabase Auth (email/password) | Supabase Cloud |
+| Real-Time | Supabase Realtime (Broadcast + Presence) | Supabase Cloud |
+| AI | Anthropic Claude API (proxied through Express) | Railway |
+| Icons | Lucide React | Bundled |
+
+### Why Supabase
+
+Supabase is an open-source Firebase alternative built on PostgreSQL. It provides a relational database, built-in authentication, and real-time channels (broadcast + presence) out of the box -- which eliminates the need for a custom WebSocket server for multiplayer features.
 
 ## Features
 
-### 🎨 Visual Elements
-- **Sticky Notes** - Colorful notes in 6 colors (yellow, pink, blue, green, purple, orange)
-- **Shapes** - Rectangles and circles with custom colors
-- **Frames** - Container boxes for organizing related elements
+### Canvas
+- Infinite board with pan (Shift+drag or middle-click drag) and zoom (scroll wheel)
+- Zoom presets: 50%, 100%, 150%, 200%, fit to screen
+- Zoom range: 0.1x to 3x
+- Grid background for visual alignment
+- Dark mode / light mode toggle (persists across sessions)
 
-### 🤖 AI-Powered Commands
-Control your board using natural language:
-- **Create elements**: "Add 5 yellow sticky notes for brainstorming ideas"
-- **Organize layouts**: "Arrange all sticky notes in a 3x3 grid"
-- **Manipulate objects**: "Move all pink notes to the right"
-- **Change properties**: "Make all sticky notes green"
-- **Build templates**: "Create a SWOT analysis with 4 quadrants"
-- **Delete elements**: "Remove all yellow sticky notes"
+### Objects
+- **Sticky notes** - 6 colors (yellow, pink, blue, green, purple, orange), editable text, font size (S/M/L), bold, text alignment
+- **Shapes** - Rectangle, circle, triangle, diamond, hexagon, star with customizable fill color and stroke thickness
+- **Lines and arrows** - Click-drag to draw, configurable color and stroke width
+- **Freehand drawing** - Pen tool with color and stroke options
+- **Eraser** - Remove drawing paths by dragging over them
+- **Text** - Standalone text objects, double-click to edit
+- **Frames** - Container boxes for organizing related elements (used in templates)
 
-### 🖱️ Interactive Canvas
-- **Infinite Pan & Zoom** - Navigate large boards with mouse/trackpad
-- **Drag & Drop** - Move elements freely across the canvas
-- **Grid Background** - Visual alignment guides
-- **Object Selection** - Click to select with visual indicators
+### Object Manipulation
+- Click to select, Cmd/Ctrl+click for multi-select, drag-select on empty canvas
+- Drag to move (single or multi-selection)
+- Resize shapes via corner handle
+- Layer ordering: bring to front, bring forward, send backward, send to back
+- Delete via keyboard (Delete/Backspace) or toolbar button
+- Undo / redo (Cmd+Z / Cmd+Shift+Z)
 
-## Quick Start
+### Real-Time Collaboration
+- Live board sync between multiple users via Supabase Broadcast channels (150ms debounce)
+- Multiplayer cursors with name labels, throttled at 50ms updates
+- Presence awareness showing online users with color-coded avatars in the header
+- Auto-save with status indicator (Saved / Saving / Unsaved / Save failed)
 
-### Prerequisites
-- Node.js 16+
-- An Anthropic API key ([get one here](https://console.anthropic.com/))
+### Sharing
+- Share modal with copyable board link
+- Public/private visibility toggle
+- Invite collaborators by email
+- Public boards auto-add visitors as editors
 
-### Installation
+### Authentication
+- Email and password sign up / sign in via Supabase Auth
+- Session persistence with auto-refresh
+- Protected routes -- must be logged in to access dashboard and boards
 
-1. **Clone the repository**
-```bash
-git clone <your-repo-url>
-cd the-board
-```
+### Dashboard
+- Board listing with grid and list views
+- Search boards by name
+- Star/favorite boards
+- Board templates: Kanban, SWOT Analysis, Brainstorm, Retrospective
+- Delete boards
 
-2. **Install dependencies**
-```bash
-npm install
-```
-
-3. **Set up environment variables**
-```bash
-# Create .env file
-echo "ANTHROPIC_API_KEY=your_api_key_here" > .env
-```
-
-4. **Start the development server**
-```bash
-npm run dev
-```
-
-5. **Open your browser**
-Navigate to `http://localhost:5173`
-
-## Usage Examples
-
-### Basic Commands
-```
-"Create a yellow sticky note that says 'User Research'"
-"Add a blue rectangle at position 200, 300"
-"Add a frame called 'Sprint Planning'"
-```
-
-### Layout & Organization
-```
-"Arrange all sticky notes in a 2x3 grid"
-"Move all pink notes 300 pixels to the right"
-"Space these elements evenly"
-```
-
-### Complex Templates
-```
-"Create a SWOT analysis with 4 frames: Strengths, Weaknesses, Opportunities, and Threats"
-"Build a kanban board with 3 columns: To Do, In Progress, Done"
-"Set up a retrospective board with What Went Well, What Didn't, and Action Items"
-"Create a user journey map with 5 stages"
-```
-
-### Queries & Cleanup
-```
-"What's currently on the board?"
-"Delete all yellow sticky notes"
-"Clear everything except the frames"
-```
-
-## How It Works
-
-### AI Function Calling Architecture
-
-```
-User Input (Natural Language)
-        ↓
-Claude AI (Analyzes & Plans)
-        ↓
-Tool Calls (Structured Commands)
-        ↓
-Board State Updates
-        ↓
-Visual Rendering
-```
-
-The application uses Claude's function calling capability to:
-1. **Interpret** natural language commands
-2. **Generate** appropriate tool calls (createStickyNote, moveObject, etc.)
-3. **Execute** operations on the board
-4. **Respond** with confirmation and context
-
-### Available AI Tools
-
-| Tool | Description | Example |
-|------|-------------|---------|
-| `createStickyNote` | Create colored sticky notes | "Add a yellow note" |
-| `createShape` | Create rectangles or circles | "Create a blue rectangle" |
-| `createFrame` | Create container frames | "Add a frame called Tasks" |
-| `moveObject` | Move one or more elements | "Move all pink notes left" |
-| `changeColor` | Change element colors | "Make all notes green" |
-| `updateText` | Update text content | "Change the text to 'Done'" |
-| `arrangeGrid` | Arrange elements in a grid | "Organize in a 3x2 grid" |
-| `getBoardState` | Get current board state | Used internally by AI |
-| `deleteObjects` | Delete elements | "Remove all yellow notes" |
-
-## Technology Stack
-
-- **Frontend Framework**: React 19.2.0
-- **Build Tool**: Vite 7.3.1
-- **AI Model**: Claude Sonnet 4.5 (Anthropic)
-- **Icons**: Lucide React
-- **Backend**: Express.js (API proxy)
-- **State Management**: React Hooks
+### AI Assistant
+- Floating AI chat button on the board canvas
+- Natural language commands to create, move, arrange, recolor, and delete objects
+- Powered by Claude API, proxied through the Express backend to keep the API key secure
 
 ## Project Structure
 
 ```
 the-board/
-├── src/
-│   ├── AIBoard.jsx      # Main board component
-│   ├── App.jsx          # Root component
-│   ├── main.jsx         # Entry point
-│   └── index.css        # Global styles
-├── server.js            # Express proxy server
-├── package.json         # Dependencies
-├── .env                 # API keys (not committed)
-├── AI_EXAMPLES.md       # Detailed AI behavior examples
-└── IMPLEMENTATION_GUIDE.md  # Technical implementation details
+  src/
+    AIBoard.jsx              # Main board canvas component
+    App.jsx                  # Root component with routing
+    main.jsx                 # Entry point
+    index.css                # Global styles
+    components/
+      AuthModal.jsx          # Login / sign up form
+      Dashboard.jsx          # Board listing and templates
+      BoardCard.jsx          # Board card for grid/list view
+      ShareModal.jsx         # Share and invite modal
+      PresenceBar.jsx        # Online user avatars
+      ProtectedRoute.jsx     # Auth route guard
+    context/
+      AuthContext.jsx         # Auth state provider
+    hooks/
+      useAuth.js             # Auth context consumer
+      useBoard.js            # Board CRUD operations
+      useAutoSave.js         # Debounced board saving
+      useBoardSync.js        # Real-time board sync via broadcast
+      usePresence.js         # Multiplayer presence and cursors
+    lib/
+      supabase.js            # Supabase client init
+  server.js                  # Express API (boards, auth middleware, AI proxy)
+  package.json
+  .env.example               # Environment variable template
 ```
 
-## Scripts
+## Getting Started
+
+### Prerequisites
+- Node.js 18+
+- A Supabase project ([supabase.com](https://supabase.com))
+- An Anthropic API key ([console.anthropic.com](https://console.anthropic.com))
+
+### Setup
+
+1. Clone the repository
+```bash
+git clone <your-repo-url>
+cd the-board
+```
+
+2. Install dependencies
+```bash
+npm install
+```
+
+3. Create a `.env` file from the template
+```bash
+cp .env.example .env
+```
+
+4. Fill in your environment variables in `.env`:
+```
+ANTHROPIC_API_KEY=your-key
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_ANON_KEY=your-anon-key
+VITE_API_URL=http://localhost:3001
+FRONTEND_URL=http://localhost:5173
+```
+
+5. Start the backend server
+```bash
+npm run server
+```
+
+6. Start the frontend dev server (in a separate terminal)
+```bash
+npm run dev
+```
+
+7. Open `http://localhost:5173`
+
+### Scripts
 
 ```bash
-npm run dev      # Start development server (Vite)
-npm run build    # Build for production
+npm run dev      # Start Vite dev server
+npm run server   # Start Express backend
+npm run build    # Production build
 npm run preview  # Preview production build
 npm run lint     # Run ESLint
 ```
 
 ## Canvas Controls
 
-- **Pan**: Middle-click drag OR Shift + Left-click drag
-- **Zoom**: Scroll wheel
-- **Select**: Left-click on element
-- **Move**: Drag selected element
-- **Clear Board**: Click "Clear Board" button in bottom toolbar
+| Action | Input |
+|--------|-------|
+| Pan | Shift + left-click drag, or middle-click drag |
+| Zoom | Scroll wheel (Ctrl+scroll for trackpad pinch) |
+| Select | Left-click on object |
+| Multi-select | Cmd/Ctrl + click, or drag-select on empty canvas |
+| Move | Drag selected object(s) |
+| Edit text | Double-click sticky note or text object |
+| Delete | Select + Delete/Backspace key, or toolbar trash button |
+| Undo | Cmd/Ctrl + Z |
+| Redo | Cmd/Ctrl + Shift + Z |
 
-## Configuration
+## Deployment
 
-### API Settings
-The application makes requests to Claude AI through a proxy server. Update `server.js` to configure:
-- Port (default: 3001)
-- CORS settings
-- API endpoint
-
-### Board Settings
-Customize in `AIBoard.jsx`:
-- Default colors
-- Element sizes
-- Grid spacing
-- Zoom limits
-
-## Security Notes
-
-**Important**: This demo currently calls the Anthropic API directly from the browser. For production:
-
-1. **Use the included proxy server** to keep API keys secure
-2. **Implement rate limiting** to prevent abuse
-3. **Add authentication** to protect your endpoints
-4. **Validate all inputs** before processing
-
-Update the API call in `AIBoard.jsx:311` to use the proxy:
-```javascript
-// Instead of:
-fetch("https://api.anthropic.com/v1/messages", ...)
-
-// Use:
-fetch("http://localhost:3001/api/messages", ...)
-```
-
-## Cost Considerations
-
-Using Claude Sonnet 4:
-- ~$3 per million input tokens
-- ~$15 per million output tokens
-- Typical command: 500-1,000 tokens
-- **Estimated cost**: $0.001 - $0.02 per command
-
-## Roadmap
-
-### Planned Features
-- [ ] Real-time collaboration (WebSockets)
-- [ ] Persistent storage (Database)
-- [ ] Text editing (double-click to edit)
-- [ ] Copy/paste functionality
-- [ ] Undo/redo
-- [ ] Export/import (JSON, PDF)
-- [ ] Connectors between elements
-- [ ] Image uploads
-- [ ] Drawing tools
-- [ ] Templates library
-- [ ] Voice commands
-
-### AI Enhancements
-- [ ] Auto-organize messy boards
-- [ ] Context-aware suggestions
-- [ ] Template generation from descriptions
-- [ ] Smart snap-to-grid
-- [ ] Collaboration insights
-
-## Browser Support
-
-- ✅ Chrome/Edge 90+
-- ✅ Firefox 88+
-- ✅ Safari 14+
-- ⚠️ Mobile: Limited (touch events need work)
-
-## Troubleshooting
-
-### API Key Issues
-```
-Error: API request failed
-```
-- Check that `ANTHROPIC_API_KEY` is set in `.env`
-- Verify the API key is valid at console.anthropic.com
-
-### CORS Errors
-```
-Access to fetch blocked by CORS policy
-```
-- Make sure you're using the proxy server
-- Start the proxy with `node server.js`
-
-### Build Errors
-```
-Module not found
-```
-- Run `npm install` to ensure all dependencies are installed
-- Clear `node_modules` and reinstall if needed
-
-## Contributing
-
-Contributions are welcome! Areas that need help:
-- Mobile touch support
-- Performance optimization for large boards
-- Additional export formats
-- More AI command patterns
-
-## Documentation
-
-- [AI Examples](./AI_EXAMPLES.md) - Detailed examples of AI behavior and capabilities
-- [Implementation Guide](./IMPLEMENTATION_GUIDE.md) - Technical architecture and setup
+- **Frontend (Vercel):** Connect your repo to Vercel. Set the `VITE_` environment variables in the Vercel dashboard.
+- **Backend (Railway):** Deploy `server.js` to Railway. Set all non-`VITE_` environment variables plus `FRONTEND_URL` (your Vercel URL) for CORS.
+- **Database (Supabase):** Boards and collaborators tables in PostgreSQL. Realtime enabled for broadcast and presence channels.
 
 ## License
 
-This is a demonstration project. Feel free to use, modify, and extend for your own projects.
+This is a demonstration project. Feel free to use, modify, and extend.
 
 ## Acknowledgments
 
-Built with:
-- [Anthropic Claude AI](https://www.anthropic.com/) - AI-powered function calling
-- [React](https://react.dev/) - UI framework
-- [Vite](https://vitejs.dev/) - Build tool
-- [Lucide Icons](https://lucide.dev/) - Icon library
-
----
+Built with [React](https://react.dev/), [Vite](https://vitejs.dev/), [Express](https://expressjs.com/), [Supabase](https://supabase.com/), [Anthropic Claude](https://www.anthropic.com/), and [Lucide Icons](https://lucide.dev/).
