@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { Eye, EyeOff, ArrowRight, Mail } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 
-export default function AuthModal() {
+export default function AuthModal({ redirectTo }) {
   const { signIn, signUp } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -44,7 +44,7 @@ export default function AuthModal() {
     try {
       localStorage.setItem('keepLoggedIn', 'true');
       if (isSignUp) {
-        await signUp(email, password);
+        await signUp(email, password, redirectTo);
         setConfirmationSent(true);
       } else {
         await signIn(email, password);

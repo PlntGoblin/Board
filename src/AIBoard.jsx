@@ -41,6 +41,7 @@ const AIBoard = () => {
   const [boardLoaded, setBoardLoaded] = useState(false);
   const [isBoardPublic, setIsBoardPublic] = useState(true);
   const [showShareModal, setShowShareModal] = useState(false);
+  const [accessError, setAccessError] = useState(null);
   const darkMode = true;
 
   // --- Tool state ---
@@ -222,8 +223,8 @@ const AIBoard = () => {
           }
         }
         setBoardLoaded(true);
-      } catch {
-        navigate('/');
+      } catch (err) {
+        setAccessError(err.message || 'Unable to load this board');
       }
     };
     load();
@@ -443,7 +444,11 @@ Rules:
       if (selectedIds.includes(objId) && selectedIds.length > 1) {
         setDraggedId(objId);
         const obj = boardObjects.find(o => o.id === objId);
-        if (obj) setDragOffset({ x: (e.clientX - viewportOffset.x) / zoom - obj.x, y: (e.clientY - viewportOffset.y) / zoom - obj.y });
+        if (obj) {
+          const ox = obj.x ?? obj.x1 ?? (obj.points?.[0]?.x || 0);
+          const oy = obj.y ?? obj.y1 ?? (obj.points?.[0]?.y || 0);
+          setDragOffset({ x: (e.clientX - viewportOffset.x) / zoom - ox, y: (e.clientY - viewportOffset.y) / zoom - oy });
+        }
         e.stopPropagation();
         return;
       }
@@ -451,7 +456,11 @@ Rules:
       setSelectedId(objId);
       setSelectedIds([objId]);
       const obj = boardObjects.find(o => o.id === objId);
-      if (obj) setDragOffset({ x: (e.clientX - viewportOffset.x) / zoom - obj.x, y: (e.clientY - viewportOffset.y) / zoom - obj.y });
+      if (obj) {
+        const ox = obj.x ?? obj.x1 ?? (obj.points?.[0]?.x || 0);
+        const oy = obj.y ?? obj.y1 ?? (obj.points?.[0]?.y || 0);
+        setDragOffset({ x: (e.clientX - viewportOffset.x) / zoom - ox, y: (e.clientY - viewportOffset.y) / zoom - oy });
+      }
       e.stopPropagation();
     } else {
       setSelectedId(null);
@@ -541,7 +550,20 @@ Rules:
             }));
           }
         } else {
-          setBoardObjects(prev => prev.map(obj => obj.id === draggedId ? { ...obj, x: newX, y: newY } : obj));
+          setBoardObjects(prev => prev.map(obj => {
+            if (obj.id !== draggedId) return obj;
+            if (obj.type === 'line' || obj.type === 'arrow') {
+              const dx = newX - (obj.x1 ?? 0);
+              const dy = newY - (obj.y1 ?? 0);
+              return { ...obj, x1: obj.x1 + dx, y1: obj.y1 + dy, x2: obj.x2 + dx, y2: obj.y2 + dy };
+            }
+            if (obj.type === 'path') {
+              const dx = newX - (obj.points[0]?.x ?? 0);
+              const dy = newY - (obj.points[0]?.y ?? 0);
+              return { ...obj, points: obj.points.map(p => ({ x: p.x + dx, y: p.y + dy })) };
+            }
+            return { ...obj, x: newX, y: newY };
+          }));
         }
       }
     });
@@ -713,6 +735,47 @@ Rules:
       setActiveTool('select');
     }
   };
+
+  // --- Access error screen ---
+  if (accessError) {
+    return (
+      <div style={{
+        width: '100vw', height: '100vh',
+        display: 'flex', flexDirection: 'column',
+        alignItems: 'center', justifyContent: 'center',
+        background: '#0a0a0f', color: '#f0f0f5',
+        fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+      }}>
+        <div style={{
+          background: 'rgba(239,68,68,0.1)',
+          border: '1px solid rgba(239,68,68,0.2)',
+          borderRadius: '16px',
+          padding: '32px',
+          maxWidth: '400px',
+          textAlign: 'center',
+        }}>
+          <h2 style={{ margin: '0 0 12px', fontSize: '20px', fontWeight: '600' }}>
+            Access Denied
+          </h2>
+          <p style={{ margin: '0 0 24px', color: '#94a3b8', fontSize: '14px', lineHeight: '1.6' }}>
+            {accessError}
+          </p>
+          <button
+            onClick={() => navigate('/')}
+            style={{
+              padding: '10px 24px',
+              background: 'linear-gradient(135deg, #38bdf8, #818cf8)',
+              color: 'white', border: 'none', borderRadius: '10px',
+              cursor: 'pointer', fontSize: '14px', fontWeight: '600',
+              boxShadow: '0 0 20px rgba(56,189,248,0.2)',
+            }}
+          >
+            Go to Dashboard
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   // --- Render ---
   return (

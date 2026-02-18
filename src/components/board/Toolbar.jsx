@@ -1,4 +1,4 @@
-import { memo } from 'react';
+import { memo, useState as useLocalState, useEffect, useRef } from 'react';
 import {
   MousePointer, Hand, Pen, Eraser, Type, ArrowRight, Minus,
   StickyNote, Shapes, Square, Circle, Triangle, Diamond, Hexagon, Star,
@@ -36,10 +36,31 @@ const SHAPE_PICKER = [
 ];
 
 function ToolButton({ isActive, onClick, title, icon: Icon, theme, size = 20, bg, color }) {
+  const [hovered, setHovered] = useLocalState(false);
+  const [showTooltip, setShowTooltip] = useLocalState(false);
+  const timerRef = useRef(null);
+  const btnRef = useRef(null);
+
+  useEffect(() => {
+    if (hovered && title) {
+      timerRef.current = setTimeout(() => setShowTooltip(true), 1000);
+    } else {
+      clearTimeout(timerRef.current);
+      setShowTooltip(false);
+    }
+    return () => clearTimeout(timerRef.current);
+  }, [hovered, title]);
+
+  const getTooltipPos = () => {
+    if (!btnRef.current) return {};
+    const r = btnRef.current.getBoundingClientRect();
+    return { position: 'fixed', left: r.right + 8, top: r.top + r.height / 2, transform: 'translateY(-50%)' };
+  };
+
   return (
     <button
+      ref={btnRef}
       onClick={onClick}
-      title={title}
       style={{
         width: '44px', height: '44px', border: 'none', borderRadius: '8px',
         background: bg || (isActive ? '#2196F3' : 'transparent'),
@@ -47,10 +68,23 @@ function ToolButton({ isActive, onClick, title, icon: Icon, theme, size = 20, bg
         cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
         transition: 'all 0.2s', position: 'relative',
       }}
-      onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.background = theme.surfaceHover; }}
-      onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.background = bg || (isActive ? '#2196F3' : 'transparent'); }}
+      onMouseEnter={(e) => { setHovered(true); if (!isActive) e.currentTarget.style.background = theme.surfaceHover; }}
+      onMouseLeave={(e) => { setHovered(false); if (!isActive) e.currentTarget.style.background = bg || (isActive ? '#2196F3' : 'transparent'); }}
     >
       <Icon size={size} />
+      {showTooltip && title && (
+        <div style={{
+          ...getTooltipPos(),
+          background: '#1e293b', color: '#f0f0f5', padding: '6px 10px',
+          borderRadius: '6px', fontSize: '12px', fontWeight: '500',
+          whiteSpace: 'nowrap', pointerEvents: 'none', zIndex: 99999,
+          boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
+          opacity: 1,
+          animation: 'tooltipFadeIn 0.3s ease',
+        }}>
+          {title}
+        </div>
+      )}
     </button>
   );
 }
@@ -67,9 +101,11 @@ export default memo(function Toolbar({
   const hasSelection = selectedId || selectedIds.length > 0;
 
   return (
-    <div style={{
+    <div className="toolbar-scroll" style={{
       position: 'absolute', left: '16px', top: '16px',
       display: 'flex', flexDirection: 'column', gap: '8px', zIndex: 10,
+      maxHeight: 'calc(100vh - 100px)', overflowY: 'auto',
+      scrollbarWidth: 'none',
     }}>
       {/* Main tools */}
       <div style={{
@@ -190,22 +226,15 @@ export default memo(function Toolbar({
               { action: bringForward, icon: ChevronUp, label: 'Bring Forward' },
               { action: sendBackward, icon: ChevronDown, label: 'Send Backward' },
               { action: sendToBack, icon: ChevronsDown, label: 'Send to Back' },
-            ].map(({ action, icon: Icon, label }) => (
-              <button
+            ].map(({ action, icon, label }) => (
+              <ToolButton
                 key={label}
+                isActive={false}
                 onClick={action}
                 title={label}
-                style={{
-                  width: '44px', height: '44px', border: 'none', borderRadius: '8px',
-                  background: 'transparent', color: theme.text,
-                  cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  transition: 'all 0.2s',
-                }}
-                onMouseEnter={(e) => { e.currentTarget.style.background = theme.surfaceHover; }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
-              >
-                <Icon size={20} />
-              </button>
+                icon={icon}
+                theme={theme}
+              />
             ))}
             <div style={{ width: '100%', height: '1px', background: theme.divider, margin: '8px 0' }} />
             <ToolButton
@@ -230,27 +259,22 @@ export default memo(function Toolbar({
         {[
           { action: handleUndo, icon: Undo, label: 'Undo (⌘Z)', enabled: historyIndex > 0 },
           { action: handleRedo, icon: Redo, label: 'Redo (⌘⇧Z)', enabled: historyIndex < historyLength - 1 },
-        ].map(({ action, icon: Icon, label, enabled }) => (
-          <button
+        ].map(({ action, icon, label, enabled }) => (
+          <ToolButton
             key={label}
+            isActive={false}
             onClick={enabled ? action : undefined}
             title={label}
-            disabled={!enabled}
-            style={{
-              width: '44px', height: '44px', border: 'none', borderRadius: '8px',
-              background: 'transparent',
-              color: enabled ? theme.text : (darkMode ? '#3a4a6c' : '#ccc'),
-              cursor: enabled ? 'pointer' : 'not-allowed',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              transition: 'all 0.2s',
-            }}
-            onMouseEnter={(e) => { if (enabled) e.currentTarget.style.background = theme.surfaceHover; }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
-          >
-            <Icon size={20} />
-          </button>
+            icon={icon}
+            theme={theme}
+            color={enabled ? theme.text : (darkMode ? '#3a4a6c' : '#ccc')}
+          />
         ))}
       </div>
+      <style>{`
+        .toolbar-scroll::-webkit-scrollbar { display: none; }
+        @keyframes tooltipFadeIn { from { opacity: 0; } to { opacity: 1; } }
+      `}</style>
     </div>
   );
 })

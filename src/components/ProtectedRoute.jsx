@@ -22,7 +22,7 @@ export default function ProtectedRoute({ children }) {
   }
 
   if (!user) {
-    return <AuthModal />;
+    return <AuthModal redirectTo={window.location.pathname} />;
   }
 
   return children;

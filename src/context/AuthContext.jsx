@@ -64,12 +64,12 @@ export function AuthProvider({ children }) {
     return () => subscription.unsubscribe();
   }, []);
 
-  const signUp = async (email, password) => {
+  const signUp = async (email, password, redirectTo) => {
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
-        emailRedirectTo: `${window.location.origin}/`,
+        emailRedirectTo: `${window.location.origin}${redirectTo || '/'}`,
       },
     });
     if (error) throw error;
@@ -82,11 +82,11 @@ export function AuthProvider({ children }) {
     return data;
   };
 
-  const signInWithGoogle = async () => {
+  const signInWithGoogle = async (redirectTo) => {
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: `${window.location.origin}/`,
+        redirectTo: `${window.location.origin}${redirectTo || '/'}`,
       }
     });
     if (error) throw error;

@@ -713,10 +713,11 @@ export default function Dashboard() {
                       borderRadius: '14px',
                       padding: '20px 18px',
                       cursor: 'pointer',
-                      textAlign: 'left',
+                      textAlign: 'center',
                       transition: 'all 0.25s',
                       display: 'flex',
                       flexDirection: 'column',
+                      alignItems: 'center',
                       gap: '10px',
                     }}
                     onMouseEnter={(e) => {

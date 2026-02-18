@@ -45,9 +45,9 @@ export default memo(function BoardObject({
     return <Frame obj={obj} isSelected={isSelected} isEditing={isEditing} editingText={editingText} setEditingId={setEditingId} setEditingText={setEditingText} setBoardObjects={setBoardObjects} handleMouseDown={handleMouseDown} theme={theme} setIsResizing={setIsResizing} setResizeHandle={setResizeHandle} setIsRotating={setIsRotating} isMultiSelected={isMultiSelected} />;
   }
 
-  if (obj.type === 'path') return <PathDrawing obj={obj} isSelected={isSelected} />;
-  if (obj.type === 'line') return <LineDrawing obj={obj} isSelected={isSelected} />;
-  if (obj.type === 'arrow') return <ArrowDrawing obj={obj} isSelected={isSelected} />;
+  if (obj.type === 'path') return <PathDrawing obj={obj} isSelected={isSelected} handleMouseDown={handleMouseDown} />;
+  if (obj.type === 'line') return <LineDrawing obj={obj} isSelected={isSelected} handleMouseDown={handleMouseDown} />;
+  if (obj.type === 'arrow') return <ArrowDrawing obj={obj} isSelected={isSelected} handleMouseDown={handleMouseDown} />;
 
   return null;
 }, (prev, next) =>
@@ -417,47 +417,71 @@ function Frame({ obj, isSelected, isEditing, editingText, setEditingId, setEditi
   );
 }
 
-const SVG_STYLE = {
+const SVG_STYLE_INTERACTIVE = {
   position: 'absolute', top: 0, left: 0,
   width: '5000px', height: '5000px',
-  pointerEvents: 'none', overflow: 'visible',
+  overflow: 'visible',
+  pointerEvents: 'none',
 };
 
-function PathDrawing({ obj, isSelected }) {
+function PathDrawing({ obj, isSelected, handleMouseDown }) {
   if (obj.points.length < 2) return null;
   const d = obj.points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
   return (
-    <svg key={obj.id} style={SVG_STYLE}>
+    <svg key={obj.id} style={SVG_STYLE_INTERACTIVE}>
+      {isSelected && <path d={d} stroke="#2196F3" strokeWidth={(obj.strokeWidth || 3) + 6} fill="none"
+        strokeLinecap="round" strokeLinejoin="round" opacity={0.3} />}
+      <path d={d} stroke="transparent" strokeWidth={Math.max(obj.strokeWidth || 3, 16)} fill="none"
+        strokeLinecap="round" strokeLinejoin="round" style={{ cursor: 'pointer', pointerEvents: 'auto' }}
+        onMouseDown={(e) => handleMouseDown(e, obj.id)} />
       <path d={d} stroke={obj.color} strokeWidth={obj.strokeWidth} fill="none"
-        strokeLinecap="round" strokeLinejoin="round" opacity={isSelected ? 0.7 : 1} />
+        strokeLinecap="round" strokeLinejoin="round" pointerEvents="none" />
     </svg>
   );
 }
 
-function LineDrawing({ obj, isSelected }) {
+function LineDrawing({ obj, isSelected, handleMouseDown }) {
   return (
-    <svg key={obj.id} style={SVG_STYLE}>
+    <svg key={obj.id} style={SVG_STYLE_INTERACTIVE}>
+      {isSelected && <line x1={obj.x1} y1={obj.y1} x2={obj.x2} y2={obj.y2}
+        stroke="#2196F3" strokeWidth={(obj.strokeWidth || 3) + 6} strokeLinecap="round" opacity={0.3} />}
+      <line x1={obj.x1} y1={obj.y1} x2={obj.x2} y2={obj.y2}
+        stroke="transparent" strokeWidth={Math.max(obj.strokeWidth || 3, 16)}
+        strokeLinecap="round" style={{ cursor: 'pointer', pointerEvents: 'auto' }}
+        onMouseDown={(e) => handleMouseDown(e, obj.id)} />
       <line x1={obj.x1} y1={obj.y1} x2={obj.x2} y2={obj.y2}
         stroke={obj.color} strokeWidth={obj.strokeWidth}
-        strokeLinecap="round" opacity={isSelected ? 0.7 : 1} />
+        strokeLinecap="round" pointerEvents="none" />
     </svg>
   );
 }
 
-function ArrowDrawing({ obj, isSelected }) {
+function ArrowDrawing({ obj, isSelected, handleMouseDown }) {
   const arrowSize = 12;
+  const selSize = arrowSize + 8;
   return (
-    <svg key={obj.id} style={SVG_STYLE}>
+    <svg key={obj.id} style={SVG_STYLE_INTERACTIVE}>
       <defs>
         <marker id={`arrowhead-${obj.id}`} markerWidth={arrowSize} markerHeight={arrowSize}
           refX={arrowSize - 2} refY={arrowSize / 2} orient="auto">
           <polygon points={`0 0, ${arrowSize} ${arrowSize / 2}, 0 ${arrowSize}`} fill={obj.color} />
         </marker>
+        {isSelected && <marker id={`arrowhead-sel-${obj.id}`} markerUnits="userSpaceOnUse"
+          markerWidth={selSize} markerHeight={selSize}
+          refX={selSize - 2} refY={selSize / 2} orient="auto">
+          <polygon points={`0 0, ${selSize} ${selSize / 2}, 0 ${selSize}`} fill="#2196F3" opacity={0.3} />
+        </marker>}
       </defs>
+      {isSelected && <line x1={obj.x1} y1={obj.y1} x2={obj.x2} y2={obj.y2}
+        stroke="#2196F3" strokeWidth={(obj.strokeWidth || 3) + 6} strokeLinecap="round" opacity={0.3}
+        markerEnd={`url(#arrowhead-sel-${obj.id})`} />}
+      <line x1={obj.x1} y1={obj.y1} x2={obj.x2} y2={obj.y2}
+        stroke="transparent" strokeWidth={Math.max(obj.strokeWidth || 3, 16)}
+        strokeLinecap="round" style={{ cursor: 'pointer', pointerEvents: 'auto' }}
+        onMouseDown={(e) => handleMouseDown(e, obj.id)} />
       <line x1={obj.x1} y1={obj.y1} x2={obj.x2} y2={obj.y2}
         stroke={obj.color} strokeWidth={obj.strokeWidth}
-        strokeLinecap="round" markerEnd={`url(#arrowhead-${obj.id})`}
-        opacity={isSelected ? 0.7 : 1} />
+        strokeLinecap="round" markerEnd={`url(#arrowhead-${obj.id})`} pointerEvents="none" />
     </svg>
   );
 }
