@@ -91,6 +91,7 @@ export default function AuthModal({ redirectTo }) {
         display: 'flex',
         flexDirection: 'column',
         justifyContent: 'center',
+        alignItems: 'center',
         padding: '60px 64px',
         background: '#080c14',
       }}>
@@ -160,15 +161,15 @@ export default function AuthModal({ redirectTo }) {
           {/* Right edge fade to form panel */}
           <div style={{
             position: 'absolute', top: 0, right: 0,
-            width: '120px', height: '100%',
+            width: '220px', height: '100%',
             background: 'linear-gradient(to right, transparent, #0d1117)',
           }} />
         </div>
 
         {/* Content */}
-        <div style={{ position: 'relative', zIndex: 1, maxWidth: '480px' }}>
+        <div style={{ position: 'relative', zIndex: 1, maxWidth: '480px', textAlign: 'center' }}>
           {/* Logo */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '48px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '14px', marginBottom: '48px' }}>
             <img
               src="/logo.png"
               alt="Dark Matters"
@@ -213,14 +214,15 @@ export default function AuthModal({ redirectTo }) {
             color: '#64748b',
             lineHeight: '1.65',
             maxWidth: '380px',
+            margin: '0 auto 52px',
           }}>
             A collaborative canvas where teams think, sketch, and build together — in real time.
           </p>
 
           {/* Feature highlights */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', alignItems: 'center' }}>
             {FEATURES.map(({ icon: Icon, title, desc }) => (
-              <div key={title} style={{ display: 'flex', gap: '16px', alignItems: 'flex-start' }}>
+              <div key={title} style={{ display: 'flex', gap: '16px', alignItems: 'flex-start', maxWidth: '340px', textAlign: 'left' }}>
                 <div style={{
                   flex: '0 0 36px', height: '36px',
                   borderRadius: '10px',
@@ -253,7 +255,6 @@ export default function AuthModal({ redirectTo }) {
         alignItems: 'center',
         justifyContent: 'center',
         padding: '0 48px',
-        borderLeft: '1px solid rgba(255,255,255,0.05)',
       }}>
         <div style={{ width: '100%', maxWidth: '360px' }}>
 
