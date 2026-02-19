@@ -4,7 +4,8 @@ import { useAuth } from './hooks/useAuth';
 import { supabase } from './lib/supabase';
 import { useBoard } from './hooks/useBoard';
 import { useAutoSave } from './hooks/useAutoSave';
-import { useBoardRealtime } from './hooks/useBoardRealtime';
+import { usePresence } from './hooks/usePresence';
+import { useBoardSync } from './hooks/useBoardSync';
 import ShareModal from './components/ShareModal';
 import BoardHeader from './components/board/BoardHeader';
 import AIChat from './components/board/AIChat';
@@ -25,6 +26,7 @@ const AIBoard = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { loadBoard, saveBoard } = useBoard();
+  const { onlineUsers, cursors, updateCursor } = usePresence(boardId, user);
 
   // --- Board state ---
   const [boardObjects, setBoardObjects] = useState([]);
@@ -94,9 +96,6 @@ const AIBoard = () => {
   // --- Theme ---
   const theme = darkTheme;
 
-  // --- Real-time: presence, cursors, board sync (single channel) ---
-  const { onlineUsers, cursors, updateCursor, markLocalSave } = useBoardRealtime(boardId, user, boardObjects, setBoardObjects);
-
   // Viewport culling: only render objects visible in viewport + buffer
   const { visible: visibleObjects, selectedSet } = useMemo(() => {
     const vLeft = -viewportOffset.x / zoom - CULL_MARGIN;
@@ -151,6 +150,9 @@ const AIBoard = () => {
     });
   };
 
+  // --- Real-time sync ---
+  useBoardSync(boardId, boardObjects, setBoardObjects, user);
+
   // --- Confetti on second person joining ---
   useEffect(() => {
     const uniqueCount = new Set(onlineUsers.map(u => u.user_id)).size;
@@ -162,7 +164,7 @@ const AIBoard = () => {
   }, [onlineUsers]);
 
   // --- Auto-save ---
-  const saveStatus = useAutoSave(boardId, boardObjects, nextId.current, boardLoaded ? saveBoard : null, markLocalSave);
+  const saveStatus = useAutoSave(boardId, boardObjects, nextId.current, boardLoaded ? saveBoard : null);
 
   // --- Undo/redo history ---
   useEffect(() => {
