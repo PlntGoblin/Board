@@ -570,7 +570,16 @@ export default function Dashboard() {
           backdropFilter: 'blur(10px)',
         }}>
           <h2 style={{
-            margin: 0, fontSize: '18px', fontWeight: '600', color: '#f0f0f5',
+            margin: 0,
+            fontSize: '20px',
+            fontWeight: '300',
+            letterSpacing: '4px',
+            textTransform: 'uppercase',
+            background: 'linear-gradient(135deg, #38bdf8, #818cf8, #c084fc)',
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent',
+            fontFamily: '"Space Grotesk", -apple-system, BlinkMacSystemFont, sans-serif',
+            filter: 'drop-shadow(0 0 12px rgba(56,189,248,0.2))',
           }}>
             Space Port
           </h2>
