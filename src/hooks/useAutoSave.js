@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { AUTOSAVE_DEBOUNCE_MS } from '../lib/config';
 
-export function useAutoSave(boardId, boardObjects, nextId, saveBoard) {
+export function useAutoSave(boardId, boardObjects, nextId, saveBoard, onSave) {
   const [saveStatus, setSaveStatus] = useState('saved');
   const timeoutRef = useRef(null);
   const initialLoadRef = useRef(true);
@@ -23,6 +23,7 @@ export function useAutoSave(boardId, boardObjects, nextId, saveBoard) {
         setSaveStatus('saving');
         await saveBoard(boardId, { objects: boardObjects, nextId });
         setSaveStatus('saved');
+        if (onSave) onSave();
       } catch {
         setSaveStatus('error');
       }

@@ -4,8 +4,7 @@ import { useAuth } from './hooks/useAuth';
 import { supabase } from './lib/supabase';
 import { useBoard } from './hooks/useBoard';
 import { useAutoSave } from './hooks/useAutoSave';
-import { usePresence } from './hooks/usePresence';
-import { useBoardSync } from './hooks/useBoardSync';
+import { useBoardRealtime } from './hooks/useBoardRealtime';
 import ShareModal from './components/ShareModal';
 import BoardHeader from './components/board/BoardHeader';
 import AIChat from './components/board/AIChat';
@@ -26,7 +25,7 @@ const AIBoard = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { loadBoard, saveBoard } = useBoard();
-  const { onlineUsers, cursors, updateCursor } = usePresence(boardId, user);
+  const { onlineUsers, cursors, updateCursor, markLocalSave } = useBoardRealtime(boardId, user, boardObjects, setBoardObjects);
 
   // --- Board state ---
   const [boardObjects, setBoardObjects] = useState([]);
@@ -150,9 +149,6 @@ const AIBoard = () => {
     });
   };
 
-  // --- Real-time sync ---
-  useBoardSync(boardId, boardObjects, setBoardObjects, user);
-
   // --- Confetti on second person joining ---
   useEffect(() => {
     const uniqueCount = new Set(onlineUsers.map(u => u.user_id)).size;
@@ -164,7 +160,7 @@ const AIBoard = () => {
   }, [onlineUsers]);
 
   // --- Auto-save ---
-  const saveStatus = useAutoSave(boardId, boardObjects, nextId.current, boardLoaded ? saveBoard : null);
+  const saveStatus = useAutoSave(boardId, boardObjects, nextId.current, boardLoaded ? saveBoard : null, markLocalSave);
 
   // --- Undo/redo history ---
   useEffect(() => {
