@@ -25,7 +25,6 @@ const AIBoard = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { loadBoard, saveBoard } = useBoard();
-  const { onlineUsers, cursors, updateCursor, markLocalSave } = useBoardRealtime(boardId, user, boardObjects, setBoardObjects);
 
   // --- Board state ---
   const [boardObjects, setBoardObjects] = useState([]);
@@ -94,6 +93,9 @@ const AIBoard = () => {
 
   // --- Theme ---
   const theme = darkTheme;
+
+  // --- Real-time: presence, cursors, board sync (single channel) ---
+  const { onlineUsers, cursors, updateCursor, markLocalSave } = useBoardRealtime(boardId, user, boardObjects, setBoardObjects);
 
   // Viewport culling: only render objects visible in viewport + buffer
   const { visible: visibleObjects, selectedSet } = useMemo(() => {
