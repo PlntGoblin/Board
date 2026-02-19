@@ -82,8 +82,9 @@ export default function PresenceBar({ users, currentUser, theme }) {
         }}
       >
         {visible.map((u, i) => {
-          const color = getColor(u.user_id);
+          const color = u.avatar_color || getColor(u.user_id);
           const name = u.display_name || u.email || 'User';
+          const emoji = u.avatar_emoji;
 
           return (
             <div
@@ -97,14 +98,14 @@ export default function PresenceBar({ users, currentUser, theme }) {
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                fontSize: '10px',
+                fontSize: emoji ? '14px' : '10px',
                 fontWeight: '700',
                 border: `2px solid ${theme?.surface || '#1a1a2e'}`,
                 marginLeft: i === 0 ? 0 : '-8px',
                 zIndex: MAX_VISIBLE - i,
               }}
             >
-              {getInitials(name)}
+              {emoji || getInitials(name)}
             </div>
           );
         })}
@@ -157,8 +158,9 @@ export default function PresenceBar({ users, currentUser, theme }) {
           </div>
           {uniqueUsers.map((u) => {
             const isCurrentUser = u.user_id === currentUser?.id;
-            const color = getColor(u.user_id);
+            const color = u.avatar_color || getColor(u.user_id);
             const name = u.display_name || u.email || 'User';
+            const emoji = u.avatar_emoji;
 
             return (
               <div
@@ -179,11 +181,11 @@ export default function PresenceBar({ users, currentUser, theme }) {
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  fontSize: '9px',
+                  fontSize: emoji ? '13px' : '9px',
                   fontWeight: '700',
                   flexShrink: 0,
                 }}>
-                  {getInitials(name)}
+                  {emoji || getInitials(name)}
                 </div>
                 <span style={{
                   fontSize: '13px',

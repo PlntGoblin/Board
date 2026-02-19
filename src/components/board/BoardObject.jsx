@@ -1,12 +1,12 @@
-import { memo } from 'react';
-import { Bold, AlignLeft, AlignCenter, RotateCw } from 'lucide-react';
+import { memo, useState as useLocalState } from 'react';
+import { Bold, AlignLeft, AlignCenter, RotateCw, MessageSquare, Minus, Reply } from 'lucide-react';
 import { getColor, STICKY_COLORS, FONT_SIZES, SHAPE_COLORS, STROKE_SIZES, TEXT_COLORS, DRAW_COLORS } from '../../lib/theme';
 
 export default memo(function BoardObject({
   obj, isSelected, isEditing, editingText,
   setEditingId, setEditingText,
   handleMouseDown, setBoardObjects,
-  setIsResizing, setResizeHandle, setIsRotating, isMultiSelected, theme,
+  setIsResizing, setResizeHandle, setIsRotating, isMultiSelected, theme, user,
 }) {
   const updateProp = (id, prop, value) => {
     setBoardObjects(prev => prev.map(o => o.id === id ? { ...o, [prop]: value } : o));
@@ -43,6 +43,16 @@ export default memo(function BoardObject({
 
   if (obj.type === 'frame') {
     return <Frame obj={obj} isSelected={isSelected} isEditing={isEditing} editingText={editingText} setEditingId={setEditingId} setEditingText={setEditingText} setBoardObjects={setBoardObjects} handleMouseDown={handleMouseDown} theme={theme} setIsResizing={setIsResizing} setResizeHandle={setResizeHandle} setIsRotating={setIsRotating} isMultiSelected={isMultiSelected} />;
+  }
+
+  if (obj.type === 'comment') {
+    return <Comment
+      obj={obj} isSelected={isSelected} isEditing={isEditing}
+      editingText={editingText} setEditingId={setEditingId}
+      setEditingText={setEditingText} handleMouseDown={handleMouseDown}
+      setBoardObjects={setBoardObjects} theme={theme}
+      isMultiSelected={isMultiSelected} user={user}
+    />;
   }
 
   if (obj.type === 'path') return <PathDrawing obj={obj} isSelected={isSelected} handleMouseDown={handleMouseDown} updateProp={updateProp} isMultiSelected={isMultiSelected} />;
@@ -601,6 +611,261 @@ function ArrowDrawing({ obj, isSelected, handleMouseDown, updateProp, isMultiSel
       </svg>
       {isSelected && !isMultiSelected && <DrawingColorToolbar obj={obj} midX={midX} midY={midY} updateProp={updateProp} />}
     </>
+  );
+}
+
+function Comment({ obj, isSelected, isEditing, editingText, setEditingId, setEditingText, handleMouseDown, setBoardObjects, theme, isMultiSelected, user }) {
+  const [expanded, setExpanded] = useLocalState(isEditing || isSelected);
+  const [replying, setReplying] = useLocalState(false);
+  const [replyText, setReplyText] = useLocalState('');
+  const hasText = obj.text && obj.text.trim().length > 0;
+  const showBubble = expanded || isEditing;
+  const authorInitial = (obj.author || '?')[0].toUpperCase();
+  const pinColor = obj.avatar_color || '#667eea';
+  const replies = obj.replies || [];
+  const replyCount = replies.length;
+
+  const submitReply = () => {
+    const text = replyText.trim();
+    if (!text) { setReplying(false); setReplyText(''); return; }
+    const avatarEmoji = user?.user_metadata?.avatar_emoji || null;
+    const avatarColor = user?.user_metadata?.avatar_color || null;
+    const newReply = {
+      id: `r${Date.now()}`,
+      text,
+      author: user?.email || 'Anonymous',
+      avatar_emoji: avatarEmoji,
+      avatar_color: avatarColor,
+      timestamp: Date.now(),
+    };
+    setBoardObjects(prev => prev.map(o =>
+      o.id === obj.id ? { ...o, replies: [...(o.replies || []), newReply] } : o
+    ));
+    setReplyText('');
+    setReplying(false);
+  };
+
+  return (
+    <div key={obj.id} style={{ position: 'absolute', left: obj.x, top: obj.y }}>
+      {/* Pin icon */}
+      <div
+        onMouseDown={(e) => { if (!isEditing) handleMouseDown(e, obj.id); }}
+        onClick={(e) => { e.stopPropagation(); setExpanded(!expanded); }}
+        onDoubleClick={(e) => {
+          e.stopPropagation();
+          if (!isEditing) { setEditingId(obj.id); setEditingText(obj.text || ''); }
+        }}
+        style={{
+          width: '36px', height: '36px', borderRadius: '50% 50% 50% 0',
+          background: isSelected ? '#2196F3' : pinColor,
+          border: isSelected ? '2px solid #90caf9' : '2px solid rgba(255,255,255,0.2)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          cursor: 'pointer', boxShadow: '0 2px 12px rgba(0,0,0,0.4)',
+          transform: 'rotate(-45deg)', transition: 'all 0.2s',
+          zIndex: 10, position: 'relative',
+        }}
+      >
+        {obj.avatar_emoji
+          ? <span style={{ transform: 'rotate(45deg)', fontSize: '16px' }}>{obj.avatar_emoji}</span>
+          : <MessageSquare size={16} style={{ transform: 'rotate(45deg)', color: 'white' }} />
+        }
+        {/* Reply count badge */}
+        {replyCount > 0 && !showBubble && (
+          <div style={{
+            position: 'absolute', top: -4, right: -4,
+            transform: 'rotate(45deg)',
+            width: '16px', height: '16px', borderRadius: '50%',
+            background: '#f472b6', color: 'white',
+            fontSize: '9px', fontWeight: '700',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            border: '1.5px solid rgba(30,30,40,0.9)',
+          }}>
+            {replyCount}
+          </div>
+        )}
+      </div>
+
+      {/* Comment bubble */}
+      {showBubble && (
+        <div style={{
+          position: 'absolute', top: -8, left: 44,
+          minWidth: '220px', maxWidth: '300px',
+          background: 'rgba(30, 30, 40, 0.95)', backdropFilter: 'blur(12px)',
+          border: '1px solid rgba(255,255,255,0.12)', borderRadius: '12px',
+          padding: '10px 12px', boxShadow: '0 4px 20px rgba(0,0,0,0.4)',
+          zIndex: 11, position: 'relative',
+        }}>
+          {/* Minimize button */}
+          <button
+            onClick={(e) => { e.stopPropagation(); setExpanded(false); setReplying(false); }}
+            onMouseDown={(e) => e.stopPropagation()}
+            style={{
+              position: 'absolute', top: '6px', right: '6px',
+              width: '20px', height: '20px', borderRadius: '6px',
+              background: 'rgba(255,255,255,0.06)',
+              border: '1px solid rgba(255,255,255,0.08)',
+              color: 'rgba(160,175,220,0.5)',
+              cursor: 'pointer', display: 'flex',
+              alignItems: 'center', justifyContent: 'center',
+              transition: 'all 0.2s', padding: 0,
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.12)'; e.currentTarget.style.color = '#c4d0ff'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; e.currentTarget.style.color = 'rgba(160,175,220,0.5)'; }}
+          >
+            <Minus size={10} />
+          </button>
+          {/* Author & time */}
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: '8px',
+            marginBottom: '6px', fontSize: '11px', color: '#94a3b8',
+          }}>
+            <div style={{
+              width: '20px', height: '20px', borderRadius: '50%',
+              background: pinColor, display: 'flex', alignItems: 'center',
+              justifyContent: 'center', fontSize: obj.avatar_emoji ? '11px' : '10px', fontWeight: '700',
+              color: 'white',
+            }}>
+              {obj.avatar_emoji || authorInitial}
+            </div>
+            <span style={{ fontWeight: '600', color: '#c4d0ff' }}>
+              {obj.author || 'Anonymous'}
+            </span>
+          </div>
+
+          {/* Text content */}
+          {isEditing ? (
+            <textarea
+              autoFocus
+              value={editingText}
+              onChange={(e) => setEditingText(e.target.value)}
+              onBlur={() => {
+                setBoardObjects(prev => prev.map(o => o.id === obj.id ? { ...o, text: editingText } : o));
+                setEditingId(null);
+              }}
+              onKeyDown={(e) => { if (e.key === 'Escape') e.target.blur(); }}
+              onMouseDown={(e) => e.stopPropagation()}
+              placeholder="Add a comment..."
+              style={{
+                width: '100%', minHeight: '40px', border: 'none', outline: 'none',
+                background: 'rgba(255,255,255,0.05)', borderRadius: '6px',
+                padding: '6px 8px', fontSize: '13px', color: '#e0e8f8',
+                fontFamily: 'inherit', resize: 'vertical',
+              }}
+            />
+          ) : (
+            <div
+              onDoubleClick={(e) => {
+                e.stopPropagation();
+                if (!isEditing) { setEditingId(obj.id); setEditingText(obj.text || ''); }
+              }}
+              style={{
+                fontSize: '13px', color: '#e0e8f8', lineHeight: '1.4',
+                whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+                cursor: 'pointer',
+              }}
+            >
+              {hasText ? obj.text : <span style={{ color: '#475569', fontStyle: 'italic' }}>Double-click to add comment...</span>}
+            </div>
+          )}
+
+          {/* Replies */}
+          {replies.length > 0 && (
+            <div style={{
+              marginTop: '8px', borderTop: '1px solid rgba(255,255,255,0.08)',
+              paddingTop: '8px', display: 'flex', flexDirection: 'column', gap: '6px',
+            }}>
+              {replies.map((r) => {
+                const rInitial = (r.author || '?')[0].toUpperCase();
+                const rColor = r.avatar_color || '#667eea';
+                return (
+                  <div key={r.id} style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
+                    <div style={{
+                      width: '18px', height: '18px', borderRadius: '50%',
+                      background: rColor, display: 'flex', alignItems: 'center',
+                      justifyContent: 'center', fontSize: r.avatar_emoji ? '10px' : '8px',
+                      fontWeight: '700', color: 'white', flexShrink: 0, marginTop: '1px',
+                    }}>
+                      {r.avatar_emoji || rInitial}
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <span style={{ fontSize: '11px', fontWeight: '600', color: '#a0b4e0' }}>
+                        {r.author || 'Anonymous'}
+                      </span>
+                      <div style={{
+                        fontSize: '12px', color: '#c8d4e8', lineHeight: '1.35',
+                        whiteSpace: 'pre-wrap', wordBreak: 'break-word', marginTop: '1px',
+                      }}>
+                        {r.text}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Reply button / input */}
+          {!isEditing && (
+            replying ? (
+              <div style={{ marginTop: '8px' }}>
+                <textarea
+                  autoFocus
+                  value={replyText}
+                  onChange={(e) => setReplyText(e.target.value)}
+                  onBlur={() => { if (!replyText.trim()) { setReplying(false); setReplyText(''); } }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitReply(); }
+                    if (e.key === 'Escape') { setReplying(false); setReplyText(''); }
+                  }}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  placeholder="Write a reply..."
+                  style={{
+                    width: '100%', minHeight: '32px', border: 'none', outline: 'none',
+                    background: 'rgba(255,255,255,0.05)', borderRadius: '6px',
+                    padding: '5px 8px', fontSize: '12px', color: '#e0e8f8',
+                    fontFamily: 'inherit', resize: 'none',
+                  }}
+                />
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '6px', marginTop: '4px' }}>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setReplying(false); setReplyText(''); }}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    style={{
+                      background: 'none', border: 'none', color: '#64748b',
+                      fontSize: '11px', cursor: 'pointer', padding: '2px 6px',
+                    }}
+                  >Cancel</button>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); submitReply(); }}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    style={{
+                      background: '#667eea', border: 'none', color: 'white',
+                      fontSize: '11px', cursor: 'pointer', padding: '2px 10px',
+                      borderRadius: '4px', fontWeight: '600',
+                    }}
+                  >Reply</button>
+                </div>
+              </div>
+            ) : (
+              <button
+                onClick={(e) => { e.stopPropagation(); setReplying(true); }}
+                onMouseDown={(e) => e.stopPropagation()}
+                style={{
+                  marginTop: '6px', background: 'none', border: 'none',
+                  color: '#64748b', fontSize: '11px', cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', gap: '4px',
+                  padding: '2px 0', transition: 'color 0.2s',
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.color = '#a0b4e0'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.color = '#64748b'; }}
+              >
+                <Reply size={12} /> Reply
+              </button>
+            )
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 

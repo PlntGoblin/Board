@@ -18,6 +18,7 @@ import { API_URL, ZOOM_MIN, ZOOM_MAX, HISTORY_MAX_DEPTH, CULL_MARGIN } from './l
 import { darkTheme } from './lib/theme';
 import { pointToSegmentDist, getObjBounds, boxesIntersect } from './lib/geometry';
 import { boardTools } from './lib/boardTools';
+import { getUserAvatar } from './lib/utils';
 
 const ERASER_THRESHOLD = 12;
 
@@ -408,12 +409,35 @@ const AIBoard = () => {
   }, [boardObjects]);
 
   // --- AI command processing ---
+  // Pre-inject board state so the AI doesn't need to call getBoardState (saves a round-trip)
+  const boardStateSummary = (() => {
+    if (!boardObjects || boardObjects.length === 0) return 'The board is currently empty.';
+    // Cap at 50 objects to avoid bloating the prompt on large boards
+    const objs = boardObjects.slice(0, 50);
+    const summary = objs.map(o => {
+      const parts = [`id:${o.id}`, `type:${o.type}`];
+      if (o.text) parts.push(`text:"${o.text.slice(0, 40)}"`);
+      if (o.title) parts.push(`title:"${o.title.slice(0, 40)}"`);
+      parts.push(`pos:(${Math.round(o.x)},${Math.round(o.y)})`);
+      if (o.width) parts.push(`size:${Math.round(o.width)}x${Math.round(o.height)}`);
+      if (o.color) parts.push(`color:${o.color}`);
+      return `[${parts.join(', ')}]`;
+    }).join('\n');
+    const extra = boardObjects.length > 50 ? `\n...and ${boardObjects.length - 50} more objects (call getBoardState for full list)` : '';
+    return `${objs.length} object(s) on the board:\n${summary}${extra}`;
+  })();
+
   const systemMessage = {
     role: "system",
     content: `You are an AI assistant that helps users create and manipulate elements on a visual collaboration board (like Miro). Use the provided tools to create sticky notes, shapes, text, frames, connectors, and organize them.
 
+Current board state (auto-provided — do NOT call getBoardState unless you need a fresh snapshot after mutations):
+${boardStateSummary}
+
 Rules:
-- ALWAYS call getBoardState first when the user references existing objects or wants to manipulate the board.
+- For CREATING new objects: proceed directly — use findOpenSpace if placing multiple items or templates, otherwise place near the center or an open area based on the board state above.
+- For MODIFYING existing objects (move, resize, recolor, delete, connect): use the board state above to find object IDs. Only call getBoardState if the above state seems stale or incomplete.
+- Do NOT call getBoardState as a first step — the board state is already provided above.
 - ALWAYS call findOpenSpace BEFORE creating templates or placing multiple new objects. This returns x,y coordinates for an unoccupied area. Use those coordinates as your starting point — NEVER use hardcoded positions like x=100, y=100.
 - Prefer modifying existing objects (move, resize, recolor) over deleting and recreating them.
 - Never move objects the user didn't ask you to move.
@@ -880,6 +904,11 @@ For any template, always call zoomToFit at the end so the user can see the full 
       const n = { id: nextId.current++, type: 'frame', x: pt.x, y: pt.y, width: 400, height: 300, title: 'Frame' };
       setBoardObjects(prev => [...prev, n]);
       setActiveTool('select');
+    } else if (activeTool === 'comment') {
+      const av = getUserAvatar(user);
+      const n = { id: nextId.current++, type: 'comment', x: pt.x, y: pt.y, text: '', author: user?.email || 'Anonymous', avatar_emoji: av.emoji, avatar_color: av.color, timestamp: Date.now() };
+      setBoardObjects(prev => [...prev, n]);
+      setEditingId(n.id); setEditingText(''); setActiveTool('select');
     }
   };
 
@@ -1008,6 +1037,7 @@ For any template, always call zoomToFit at the end so the user can see the full 
                 setIsRotating={setIsRotating}
                 isMultiSelected={selectedIds.length > 1}
                 theme={theme}
+                user={user}
               />
             ))}
 

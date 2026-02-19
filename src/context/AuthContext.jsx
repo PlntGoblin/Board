@@ -105,8 +105,17 @@ export function AuthProvider({ children }) {
     if (error) throw error;
   };
 
+  const updateAvatar = async (emoji, color) => {
+    const { data, error } = await supabase.auth.updateUser({
+      data: { avatar_emoji: emoji, avatar_color: color },
+    });
+    if (error) throw error;
+    setUser(data.user);
+    return data.user;
+  };
+
   return (
-    <AuthContext.Provider value={{ user, session, loading, signUp, signIn, signInWithGoogle, signOut, resetPassword }}>
+    <AuthContext.Provider value={{ user, session, loading, signUp, signIn, signInWithGoogle, signOut, resetPassword, updateAvatar }}>
       {children}
     </AuthContext.Provider>
   );

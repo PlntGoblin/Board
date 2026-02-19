@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Plus, Search, Home, Clock, Star, Grid3x3, List, Trash2, LogOut, UserMinus } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { useBoard } from '../hooks/useBoard';
+import { getUserAvatar, AVATAR_EMOJIS, AVATAR_COLORS } from '../lib/utils';
 
 const STICKY_COLORS = {
   yellow: '#FFF59D', pink: '#F48FB1', blue: '#81D4FA',
@@ -121,7 +122,7 @@ function BoardThumbnail({ boardData }) {
 }
 
 export default function Dashboard() {
-  const { user, signOut } = useAuth();
+  const { user, signOut, updateAvatar } = useAuth();
   const { listBoards, createBoard, deleteBoard, leaveBoard, saveBoard } = useBoard();
   const navigate = useNavigate();
   const [boards, setBoards] = useState([]);
@@ -132,6 +133,8 @@ export default function Dashboard() {
   const [viewMode, setViewMode] = useState('grid');
   const [searchQuery, setSearchQuery] = useState('');
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [showAvatarPicker, setShowAvatarPicker] = useState(false);
+  const avatar = getUserAvatar(user);
   const [starredIds, setStarredIds] = useState(() => {
     try { return JSON.parse(localStorage.getItem('starredBoards') || '[]'); }
     catch { return []; }
@@ -650,18 +653,18 @@ export default function Dashboard() {
             {/* Avatar */}
             <div style={{ position: 'relative' }} data-user-menu>
               <div
-                onClick={() => setShowUserMenu(!showUserMenu)}
+                onClick={() => { setShowUserMenu(!showUserMenu); setShowAvatarPicker(false); }}
                 style={{
                   width: '36px', height: '36px',
                   borderRadius: '10px',
-                  background: 'linear-gradient(135deg, #38bdf8, #818cf8)',
+                  background: avatar.color || 'linear-gradient(135deg, #38bdf8, #818cf8)',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  color: 'white', fontSize: '12px', fontWeight: '600',
+                  color: 'white', fontSize: avatar.emoji ? '18px' : '12px', fontWeight: '600',
                   cursor: 'pointer',
                   boxShadow: '0 0 15px rgba(56,189,248,0.15)',
                 }}
               >
-                {getUserInitials()}
+                {avatar.emoji || getUserInitials()}
               </div>
               {showUserMenu && (
                 <div style={{
@@ -671,7 +674,7 @@ export default function Dashboard() {
                   borderRadius: '12px',
                   boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
                   backdropFilter: 'blur(20px)',
-                  minWidth: '200px',
+                  minWidth: '220px',
                   zIndex: 1000,
                   overflow: 'hidden',
                 }}>
@@ -686,6 +689,69 @@ export default function Dashboard() {
                       {user?.email}
                     </div>
                   </div>
+
+                  {/* Edit Avatar toggle */}
+                  <button
+                    onClick={() => setShowAvatarPicker(!showAvatarPicker)}
+                    style={{
+                      width: '100%', padding: '10px 16px',
+                      border: 'none', background: showAvatarPicker ? 'rgba(255,255,255,0.05)' : 'transparent',
+                      textAlign: 'left', fontSize: '13px', color: '#94a3b8',
+                      cursor: 'pointer', transition: 'all 0.15s',
+                      borderBottom: showAvatarPicker ? '1px solid rgba(255,255,255,0.06)' : 'none',
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; e.currentTarget.style.color = '#f0f0f5'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = showAvatarPicker ? 'rgba(255,255,255,0.05)' : 'transparent'; e.currentTarget.style.color = '#94a3b8'; }}
+                  >
+                    Edit Avatar
+                  </button>
+
+                  {/* Avatar Picker */}
+                  {showAvatarPicker && (
+                    <div style={{ padding: '12px 14px' }}>
+                      <div style={{ fontSize: '11px', fontWeight: '600', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px' }}>
+                        Emoji
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '4px', marginBottom: '12px' }}>
+                        {AVATAR_EMOJIS.map(e => (
+                          <button
+                            key={e}
+                            onClick={() => updateAvatar(e, avatar.color || AVATAR_COLORS[0])}
+                            style={{
+                              width: '34px', height: '34px', border: 'none', borderRadius: '8px',
+                              background: avatar.emoji === e ? 'rgba(102,126,234,0.25)' : 'rgba(255,255,255,0.04)',
+                              fontSize: '18px', cursor: 'pointer', display: 'flex',
+                              alignItems: 'center', justifyContent: 'center',
+                              outline: avatar.emoji === e ? '2px solid #667eea' : '2px solid transparent',
+                              transition: 'all 0.15s',
+                            }}
+                          >
+                            {e}
+                          </button>
+                        ))}
+                      </div>
+                      <div style={{ fontSize: '11px', fontWeight: '600', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px' }}>
+                        Background
+                      </div>
+                      <div style={{ display: 'flex', gap: '6px' }}>
+                        {AVATAR_COLORS.map(c => (
+                          <button
+                            key={c}
+                            onClick={() => updateAvatar(avatar.emoji || '🚀', c)}
+                            style={{
+                              width: '28px', height: '28px', borderRadius: '50%',
+                              background: c, border: 'none', cursor: 'pointer', padding: 0,
+                              outline: avatar.color === c ? '2px solid #fff' : '2px solid transparent',
+                              outlineOffset: '2px',
+                              boxShadow: avatar.color === c ? '0 0 8px rgba(255,255,255,0.2)' : 'none',
+                              transition: 'all 0.15s',
+                            }}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                   <button
                     onClick={async () => {
                       try { await signOut(); } catch { /* sign out errors are non-fatal */ }
@@ -695,6 +761,7 @@ export default function Dashboard() {
                       border: 'none', background: 'transparent',
                       textAlign: 'left', fontSize: '13px', color: '#94a3b8',
                       cursor: 'pointer', transition: 'all 0.15s',
+                      borderTop: '1px solid rgba(255,255,255,0.06)',
                     }}
                     onMouseEnter={(e) => {
                       e.currentTarget.style.background = 'rgba(255,255,255,0.05)';

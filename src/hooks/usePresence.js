@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { CURSOR_THROTTLE_MS } from '../lib/config';
-import { getDisplayName } from '../lib/utils';
+import { getDisplayName, getUserAvatar } from '../lib/utils';
 
 export function usePresence(boardId, user) {
   const [onlineUsers, setOnlineUsers] = useState([]);
@@ -60,10 +60,13 @@ export function usePresence(boardId, user) {
         if (status === 'SUBSCRIBED') {
           channelRef.current = presenceChannel;
           // Track user info only (no cursor) — cursor goes via broadcast
+          const avatarData = getUserAvatar(user);
           await presenceChannel.track({
             user_id: user.id,
             email: user.email,
             display_name: getDisplayName(user),
+            avatar_emoji: avatarData.emoji,
+            avatar_color: avatarData.color,
             online_at: new Date().toISOString(),
           });
           // Immediately read presence state after tracking

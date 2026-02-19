@@ -2,7 +2,7 @@ import { memo, useState as useLocalState, useEffect, useRef } from 'react';
 import {
   MousePointer, Hand, Pen, Eraser, Type, ArrowRight, Minus,
   StickyNote, Shapes, Square, Circle, Triangle, Diamond, Hexagon, Star,
-  Frame,
+  Frame, MessageSquare,
   Undo, Redo, Trash2,
 } from 'lucide-react';
 
@@ -234,6 +234,15 @@ export default memo(function Toolbar({
           onClick={() => { setActiveTool('frame'); setShowStickyMenu(false); setShowShapeMenu(false); }}
           title="Frame"
           icon={Frame}
+          theme={theme}
+        />
+
+        {/* Comment tool */}
+        <ToolButton
+          isActive={activeTool === 'comment'}
+          onClick={() => { setActiveTool('comment'); setShowStickyMenu(false); setShowShapeMenu(false); }}
+          title="Comment"
+          icon={MessageSquare}
           theme={theme}
         />
 
