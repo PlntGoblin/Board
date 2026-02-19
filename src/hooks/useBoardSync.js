@@ -14,8 +14,6 @@ export function useBoardSync(boardId, boardObjects, setBoardObjects, user) {
   boardObjectsRef.current = boardObjects;
 
   // Subscribe to the channel once per board/user
-  // Use user?.id (stable string) instead of user (object ref) to avoid
-  // tearing down the channel on every auth token refresh
   useEffect(() => {
     if (!boardId || !user?.id) return;
 
@@ -27,14 +25,12 @@ export function useBoardSync(boardId, boardObjects, setBoardObjects, user) {
 
         const { ops, objects } = payload.payload;
 
-        // Delta sync: apply operations
         if (ops) {
           ignoreNextUpdate.current = true;
           setBoardObjects(prev => {
             let next = prev;
             for (const op of ops) {
               if (op.type === 'create') {
-                // Guard against duplicates (e.g. during channel reconnection)
                 if (!next.some(o => o.id === op.data.id)) {
                   next = [...next, op.data];
                 }
@@ -47,7 +43,6 @@ export function useBoardSync(boardId, boardObjects, setBoardObjects, user) {
             return next;
           });
         } else if (objects) {
-          // Fallback: full state replacement
           ignoreNextUpdate.current = true;
           setBoardObjects(objects);
         }
@@ -55,8 +50,6 @@ export function useBoardSync(boardId, boardObjects, setBoardObjects, user) {
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') {
           channelRef.current = channel;
-          // Sync the baseline to whatever is loaded now so we don't
-          // re-broadcast the entire board as fresh creates on the first change
           prevObjectsRef.current = boardObjectsRef.current;
         }
       });
@@ -70,7 +63,6 @@ export function useBoardSync(boardId, boardObjects, setBoardObjects, user) {
   const broadcastNow = useCallback((prev, curr) => {
     if (!channelRef.current || !user?.id) return;
 
-    // Compute delta
     const prevMap = new Map(prev.map(o => [o.id, o]));
     const currMap = new Map(curr.map(o => [o.id, o]));
     const ops = [];
@@ -86,7 +78,6 @@ export function useBoardSync(boardId, boardObjects, setBoardObjects, user) {
 
     if (ops.length === 0) return;
 
-    // For very large diffs (e.g. template load, clear), send full state instead
     if (ops.length > curr.length * 0.5) {
       channelRef.current.send({
         type: 'broadcast',
@@ -106,13 +97,11 @@ export function useBoardSync(boardId, boardObjects, setBoardObjects, user) {
   }, [user?.id]);
 
   // Broadcast local changes as deltas — leading + trailing edge
-  // Also handles ignoreNextUpdate in the same effect to avoid race conditions
-  // with a separate no-deps effect consuming the flag first
   useEffect(() => {
     if (!boardId || !user?.id) return;
 
-    // If this render was triggered by a remote update we just applied,
-    // update the baseline and skip broadcasting
+    // Remote update: sync baseline but DON'T clear the trailing timeout —
+    // a pending local broadcast should still fire
     if (ignoreNextUpdate.current) {
       ignoreNextUpdate.current = false;
       prevObjectsRef.current = boardObjects;
@@ -121,36 +110,37 @@ export function useBoardSync(boardId, boardObjects, setBoardObjects, user) {
 
     const prev = prevObjectsRef.current;
     const curr = boardObjects;
-
-    // Same reference = no change
     if (prev === curr) return;
 
     const now = Date.now();
     const elapsed = now - lastBroadcastTime.current;
 
-    // Clear any pending trailing timeout
+    // Clear any pending trailing timeout before scheduling a new one
     if (trailingTimeout.current) {
       clearTimeout(trailingTimeout.current);
       trailingTimeout.current = null;
     }
 
     if (elapsed >= SYNC_DEBOUNCE_MS) {
-      // Leading edge: enough time has passed, send immediately
       broadcastNow(prev, curr);
     } else {
-      // Trailing edge: schedule for remaining time
-      // Use refs (not closure values) so the timeout always reads the latest state
       trailingTimeout.current = setTimeout(() => {
         trailingTimeout.current = null;
         broadcastNow(prevObjectsRef.current, boardObjectsRef.current);
       }, SYNC_DEBOUNCE_MS - elapsed);
     }
 
+    // No cleanup — trailing timeouts are managed explicitly above.
+    // React's cleanup would kill pending local broadcasts when remote updates arrive.
+  }, [boardObjects, boardId, user?.id, broadcastNow]);
+
+  // Cleanup trailing timeout only on unmount
+  useEffect(() => {
     return () => {
       if (trailingTimeout.current) {
         clearTimeout(trailingTimeout.current);
         trailingTimeout.current = null;
       }
     };
-  }, [boardObjects, boardId, user?.id, broadcastNow]);
+  }, []);
 }
