@@ -1,4 +1,4 @@
-import { ArrowLeft, Cloud, CloudOff, Loader, Users, Share2, Trash2 } from 'lucide-react';
+import { ArrowLeft, Cloud, CloudOff, Loader, Share2, Trash2 } from 'lucide-react';
 import PresenceBar from '../PresenceBar';
 
 export default function BoardHeader({
@@ -55,17 +55,7 @@ export default function BoardHeader({
 
       <div style={{ flex: 1 }} />
 
-      <PresenceBar users={onlineUsers} currentUser={user} />
-
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: '5px',
-        padding: '5px 10px', background: theme.surfaceHover,
-        borderRadius: '6px', fontSize: '12px',
-        color: theme.textSecondary, fontWeight: '500',
-      }}>
-        <Users size={13} />
-        {onlineUsers.length}
-      </div>
+      <PresenceBar users={onlineUsers} currentUser={user} theme={theme} />
 
       <button
         onClick={onClear}

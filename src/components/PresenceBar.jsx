@@ -1,3 +1,5 @@
+import { useState, useRef, useEffect } from 'react';
+
 const COLORS = [
   '#667eea', '#764ba2', '#f5576c', '#4facfe',
   '#43e97b', '#fa709a', '#fee140', '#a18cd1',
@@ -20,7 +22,24 @@ function getInitials(name) {
   return name.slice(0, 2).toUpperCase();
 }
 
-export default function PresenceBar({ users, currentUser }) {
+const MAX_VISIBLE = 3;
+
+export default function PresenceBar({ users, currentUser, theme }) {
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef(null);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    if (!open) return;
+    const handleClick = (e) => {
+      if (containerRef.current && !containerRef.current.contains(e.target)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [open]);
+
   if (!users || users.length === 0) return null;
 
   // Deduplicate by user_id
@@ -33,49 +52,137 @@ export default function PresenceBar({ users, currentUser }) {
     }
   }
 
-  return (
-    <div style={{
-      display: 'flex',
-      alignItems: 'center',
-      gap: '4px',
-    }}>
-      {uniqueUsers.map((u) => {
-        const isCurrentUser = u.user_id === currentUser?.id;
-        const color = getColor(u.user_id);
-        const name = u.display_name || u.email || 'User';
+  const visible = uniqueUsers.slice(0, MAX_VISIBLE);
+  const overflow = uniqueUsers.length - MAX_VISIBLE;
 
-        return (
+  return (
+    <div ref={containerRef} style={{ position: 'relative' }}>
+      <div
+        onClick={() => setOpen(!open)}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          cursor: 'pointer',
+        }}
+      >
+        {visible.map((u, i) => {
+          const color = getColor(u.user_id);
+          const name = u.display_name || u.email || 'User';
+
+          return (
+            <div
+              key={u.user_id}
+              style={{
+                width: '28px',
+                height: '28px',
+                borderRadius: '50%',
+                background: color,
+                color: 'white',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '10px',
+                fontWeight: '700',
+                border: `2px solid ${theme?.surface || '#1a1a2e'}`,
+                marginLeft: i === 0 ? 0 : '-8px',
+                zIndex: MAX_VISIBLE - i,
+              }}
+            >
+              {getInitials(name)}
+            </div>
+          );
+        })}
+        {overflow > 0 && (
           <div
-            key={u.user_id}
-            title={`${name}${isCurrentUser ? ' (you)' : ''}`}
             style={{
-              width: '32px',
-              height: '32px',
+              width: '28px',
+              height: '28px',
               borderRadius: '50%',
-              background: color,
-              color: 'white',
+              background: theme?.surfaceHover || '#2a2a3e',
+              color: theme?.textSecondary || '#888',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              fontSize: '11px',
+              fontSize: '10px',
               fontWeight: '700',
-              border: isCurrentUser ? '2px solid #333' : '2px solid white',
-              boxShadow: '0 1px 3px rgba(0,0,0,0.15)',
-              cursor: 'default',
+              border: `2px solid ${theme?.surface || '#1a1a2e'}`,
+              marginLeft: '-8px',
+              zIndex: 0,
             }}
           >
-            {getInitials(name)}
+            +{overflow}
           </div>
-        );
-      })}
-      {uniqueUsers.length > 0 && (
-        <span style={{
-          fontSize: '12px',
-          color: '#888',
-          marginLeft: '4px',
+        )}
+      </div>
+
+      {open && (
+        <div style={{
+          position: 'absolute',
+          top: '100%',
+          right: 0,
+          marginTop: '8px',
+          background: theme?.surface || '#1a1a2e',
+          border: `1px solid ${theme?.border || 'rgba(255,255,255,0.1)'}`,
+          borderRadius: '10px',
+          padding: '6px 0',
+          minWidth: '180px',
+          boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+          zIndex: 1000,
         }}>
-          {uniqueUsers.length} online
-        </span>
+          <div style={{
+            padding: '6px 12px 8px',
+            fontSize: '11px',
+            fontWeight: '600',
+            color: theme?.textMuted || '#666',
+            textTransform: 'uppercase',
+            letterSpacing: '0.5px',
+          }}>
+            Online — {uniqueUsers.length}
+          </div>
+          {uniqueUsers.map((u) => {
+            const isCurrentUser = u.user_id === currentUser?.id;
+            const color = getColor(u.user_id);
+            const name = u.display_name || u.email || 'User';
+
+            return (
+              <div
+                key={u.user_id}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  padding: '7px 12px',
+                }}
+              >
+                <div style={{
+                  width: '24px',
+                  height: '24px',
+                  borderRadius: '50%',
+                  background: color,
+                  color: 'white',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: '9px',
+                  fontWeight: '700',
+                  flexShrink: 0,
+                }}>
+                  {getInitials(name)}
+                </div>
+                <span style={{
+                  fontSize: '13px',
+                  color: theme?.text || '#f0f4ff',
+                  fontWeight: '500',
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                }}>
+                  {name}{isCurrentUser ? ' (you)' : ''}
+                </span>
+              </div>
+            );
+          })}
+        </div>
       )}
     </div>
   );
