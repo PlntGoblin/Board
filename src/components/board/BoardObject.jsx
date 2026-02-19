@@ -45,9 +45,9 @@ export default memo(function BoardObject({
     return <Frame obj={obj} isSelected={isSelected} isEditing={isEditing} editingText={editingText} setEditingId={setEditingId} setEditingText={setEditingText} setBoardObjects={setBoardObjects} handleMouseDown={handleMouseDown} theme={theme} setIsResizing={setIsResizing} setResizeHandle={setResizeHandle} setIsRotating={setIsRotating} isMultiSelected={isMultiSelected} />;
   }
 
-  if (obj.type === 'path') return <PathDrawing obj={obj} isSelected={isSelected} handleMouseDown={handleMouseDown} updateProp={updateProp} />;
-  if (obj.type === 'line') return <LineDrawing obj={obj} isSelected={isSelected} handleMouseDown={handleMouseDown} updateProp={updateProp} />;
-  if (obj.type === 'arrow') return <ArrowDrawing obj={obj} isSelected={isSelected} handleMouseDown={handleMouseDown} updateProp={updateProp} />;
+  if (obj.type === 'path') return <PathDrawing obj={obj} isSelected={isSelected} handleMouseDown={handleMouseDown} updateProp={updateProp} isMultiSelected={isMultiSelected} />;
+  if (obj.type === 'line') return <LineDrawing obj={obj} isSelected={isSelected} handleMouseDown={handleMouseDown} updateProp={updateProp} isMultiSelected={isMultiSelected} />;
+  if (obj.type === 'arrow') return <ArrowDrawing obj={obj} isSelected={isSelected} handleMouseDown={handleMouseDown} updateProp={updateProp} isMultiSelected={isMultiSelected} />;
 
   return null;
 }, (prev, next) =>
@@ -55,14 +55,15 @@ export default memo(function BoardObject({
   prev.isSelected === next.isSelected &&
   prev.isEditing === next.isEditing &&
   prev.editingText === next.editingText &&
-  prev.theme === next.theme
+  prev.theme === next.theme &&
+  prev.isMultiSelected === next.isMultiSelected
 )
 
 function StickyNote({ obj, isSelected, isEditing, editingText, setEditingId, setEditingText, handleMouseDown, setBoardObjects, updateProp, setIsRotating, isMultiSelected }) {
   const noteFontSize = obj.fontSize || 14;
   const noteBold = obj.fontWeight === 'bold';
   const noteAlign = obj.textAlign || 'left';
-  const showToolbar = isSelected || isEditing;
+  const showToolbar = (isSelected || isEditing) && !isMultiSelected;
 
   return (
     <div key={obj.id} style={{ position: 'absolute', left: obj.x, top: obj.y, transform: obj.rotation ? `rotate(${obj.rotation}deg)` : undefined, transformOrigin: 'center center' }}>
@@ -233,7 +234,7 @@ function Shape({ obj, isSelected, handleMouseDown, updateProp, setIsResizing, se
   return (
     <div key={obj.id} style={{ position: 'absolute', left: obj.x, top: obj.y, width: w, height: h, transform: obj.rotation ? `rotate(${obj.rotation}deg)` : undefined, transformOrigin: 'center center' }}>
       {isSelected && !isMultiSelected && <RotationHandle setIsRotating={setIsRotating} />}
-      {isSelected && (
+      {isSelected && !isMultiSelected && (
         <div
           onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); }}
           style={{
@@ -307,7 +308,7 @@ function TextObject({ obj, isSelected, isEditing, editingText, setEditingId, set
   const textBold = obj.fontWeight === 'bold';
   const textAlign = obj.textAlign || 'left';
   const textColor = obj.color || theme.text;
-  const showToolbar = isSelected || isEditing;
+  const showToolbar = (isSelected || isEditing) && !isMultiSelected;
 
   return (
     <div key={obj.id} style={{ position: 'absolute', left: obj.x, top: obj.y, transform: obj.rotation ? `rotate(${obj.rotation}deg)` : undefined, transformOrigin: 'center center' }}>
@@ -538,7 +539,7 @@ function DrawingColorToolbar({ obj, midX, midY, updateProp }) {
   );
 }
 
-function PathDrawing({ obj, isSelected, handleMouseDown, updateProp }) {
+function PathDrawing({ obj, isSelected, handleMouseDown, updateProp, isMultiSelected }) {
   if (obj.points.length < 2) return null;
   const d = obj.points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
   const mid = obj.points[Math.floor(obj.points.length / 2)];
@@ -551,12 +552,12 @@ function PathDrawing({ obj, isSelected, handleMouseDown, updateProp }) {
         <path d={d} stroke={obj.color} strokeWidth={obj.strokeWidth} fill="none"
           strokeLinecap="round" strokeLinejoin="round" pointerEvents="none" />
       </svg>
-      {isSelected && <DrawingColorToolbar obj={obj} midX={mid.x} midY={mid.y} updateProp={updateProp} />}
+      {isSelected && !isMultiSelected && <DrawingColorToolbar obj={obj} midX={mid.x} midY={mid.y} updateProp={updateProp} />}
     </>
   );
 }
 
-function LineDrawing({ obj, isSelected, handleMouseDown, updateProp }) {
+function LineDrawing({ obj, isSelected, handleMouseDown, updateProp, isMultiSelected }) {
   const midX = (obj.x1 + obj.x2) / 2;
   const midY = (obj.y1 + obj.y2) / 2;
   return (
@@ -568,14 +569,14 @@ function LineDrawing({ obj, isSelected, handleMouseDown, updateProp }) {
           onMouseDown={(e) => handleMouseDown(e, obj.id)} />
         <line x1={obj.x1} y1={obj.y1} x2={obj.x2} y2={obj.y2}
           stroke={obj.color} strokeWidth={obj.strokeWidth}
-          strokeLinecap="round" pointerEvents="none" />
+          strokeLinecap="round" strokeDasharray={obj.strokeDasharray || 'none'} pointerEvents="none" />
       </svg>
-      {isSelected && <DrawingColorToolbar obj={obj} midX={midX} midY={midY} updateProp={updateProp} />}
+      {isSelected && !isMultiSelected && <DrawingColorToolbar obj={obj} midX={midX} midY={midY} updateProp={updateProp} />}
     </>
   );
 }
 
-function ArrowDrawing({ obj, isSelected, handleMouseDown, updateProp }) {
+function ArrowDrawing({ obj, isSelected, handleMouseDown, updateProp, isMultiSelected }) {
   const arrowSize = 12;
   const midX = (obj.x1 + obj.x2) / 2;
   const midY = (obj.y1 + obj.y2) / 2;
@@ -594,9 +595,9 @@ function ArrowDrawing({ obj, isSelected, handleMouseDown, updateProp }) {
           onMouseDown={(e) => handleMouseDown(e, obj.id)} />
         <line x1={obj.x1} y1={obj.y1} x2={obj.x2} y2={obj.y2}
           stroke={obj.color} strokeWidth={obj.strokeWidth}
-          strokeLinecap="round" markerEnd={`url(#arrowhead-${obj.id})`} pointerEvents="none" />
+          strokeLinecap="round" strokeDasharray={obj.strokeDasharray || 'none'} markerEnd={`url(#arrowhead-${obj.id})`} pointerEvents="none" />
       </svg>
-      {isSelected && <DrawingColorToolbar obj={obj} midX={midX} midY={midY} updateProp={updateProp} />}
+      {isSelected && !isMultiSelected && <DrawingColorToolbar obj={obj} midX={midX} midY={midY} updateProp={updateProp} />}
     </>
   );
 }

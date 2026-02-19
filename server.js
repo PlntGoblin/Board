@@ -2,8 +2,11 @@ import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import { createClient } from '@supabase/supabase-js';
+import OpenAI from 'openai';
+import { wrapOpenAI } from 'langsmith/wrappers';
 
 const app = express();
+const openai = wrapOpenAI(new OpenAI());
 
 // --- CORS ---
 const allowedOrigins = [
@@ -11,6 +14,10 @@ const allowedOrigins = [
   'http://localhost:5174',
   'http://localhost:5175',
   'http://localhost:5176',
+  'http://localhost:5177',
+  'http://localhost:5178',
+  'http://localhost:5179',
+  'http://localhost:5180',
   process.env.FRONTEND_URL,
 ].filter(Boolean).map(o => o.trim().replace(/\/+$/, ''));
 
@@ -244,23 +251,15 @@ app.patch('/api/boards/:id/visibility', authenticate, async (req, res) => {
   res.json(data);
 });
 
-// AI Messages proxy (auth-protected)
+// AI Messages proxy (auth-protected, traced via LangSmith)
 app.post('/api/messages', authenticate, async (req, res) => {
   try {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
-      },
-      body: JSON.stringify(req.body),
-    });
-
-    const data = await response.json();
-    res.status(response.status).json(data);
+    const completion = await openai.chat.completions.create(req.body);
+    res.json(completion);
   } catch (error) {
     console.error('Proxy error:', error);
-    res.status(500).json({ error: { message: 'Proxy server error' } });
+    const status = error.status || 500;
+    res.status(status).json({ error: { message: error.message || 'Proxy server error' } });
   }
 });
 

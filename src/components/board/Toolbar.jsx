@@ -88,6 +88,43 @@ function ToolButton({ isActive, onClick, title, icon: Icon, theme, size = 20, bg
   );
 }
 
+function PickerButton({ activeTool, toolId, icon, label, showMenu, onToggle, theme, darkMode, children }) {
+  const btnRef = useRef(null);
+  const [pos, setPos] = useLocalState(null);
+
+  useEffect(() => {
+    if (showMenu && btnRef.current) {
+      const r = btnRef.current.getBoundingClientRect();
+      setPos({ left: r.right + 12, top: r.top });
+    }
+  }, [showMenu]);
+
+  return (
+    <>
+      <div ref={btnRef}>
+        <ToolButton
+          isActive={activeTool === toolId}
+          onClick={onToggle}
+          title={label}
+          icon={icon}
+          theme={theme}
+        />
+      </div>
+      {showMenu && pos && (
+        <div style={{
+          position: 'fixed', left: pos.left, top: pos.top,
+          background: theme.surface, borderRadius: '12px',
+          boxShadow: darkMode ? '0 8px 24px rgba(0,0,0,0.5)' : '0 8px 24px rgba(0,0,0,0.12)',
+          padding: '10px', zIndex: 99999,
+          animation: 'popIn 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
+        }}>
+          {children}
+        </div>
+      )}
+    </>
+  );
+}
+
 export default memo(function Toolbar({
   activeTool, setActiveTool,
   showStickyMenu, setShowStickyMenu, showShapeMenu, setShowShapeMenu,
@@ -124,88 +161,72 @@ export default memo(function Toolbar({
         ))}
 
         {/* Sticky Note with picker */}
-        <div style={{ position: 'relative' }}>
-          <ToolButton
-            isActive={activeTool === 'sticky'}
-            onClick={() => { setActiveTool('sticky'); setShowStickyMenu(!showStickyMenu); setShowShapeMenu(false); }}
-            title="Sticky Note"
-            icon={StickyNote}
-            theme={theme}
-          />
-          {showStickyMenu && (
-            <div style={{
-              position: 'absolute', left: '64px', top: '0',
-              background: theme.surface, borderRadius: '12px',
-              boxShadow: darkMode ? '0 8px 24px rgba(0,0,0,0.5)' : '0 8px 24px rgba(0,0,0,0.12)',
-              padding: '10px', zIndex: 20,
-              animation: 'popIn 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
-            }}>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '6px' }}>
-                {STICKY_PICKER.map(c => (
-                  <button
-                    key={c.id}
-                    onClick={() => { setStickyColor(c.id); setShowStickyMenu(false); }}
-                    style={{
-                      width: '28px', height: '28px', borderRadius: '6px',
-                      background: c.color,
-                      border: stickyColor === c.id ? '3px solid #2196F3' : '2px solid transparent',
-                      cursor: 'pointer', transition: 'all 0.15s', padding: 0,
-                      transform: stickyColor === c.id ? 'scale(1.15)' : 'scale(1)',
-                    }}
-                    title={c.id}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
+        <PickerButton
+          activeTool={activeTool}
+          toolId="sticky"
+          icon={StickyNote}
+          label="Sticky Note"
+          showMenu={showStickyMenu}
+          onToggle={() => { setActiveTool('sticky'); setShowStickyMenu(!showStickyMenu); setShowShapeMenu(false); }}
+          theme={theme}
+          darkMode={darkMode}
+        >
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '6px' }}>
+            {STICKY_PICKER.map(c => (
+              <button
+                key={c.id}
+                onClick={() => { setStickyColor(c.id); setShowStickyMenu(false); }}
+                style={{
+                  width: '28px', height: '28px', borderRadius: '6px',
+                  background: c.color,
+                  border: stickyColor === c.id ? '3px solid #2196F3' : '2px solid transparent',
+                  cursor: 'pointer', transition: 'all 0.15s', padding: 0,
+                  transform: stickyColor === c.id ? 'scale(1.15)' : 'scale(1)',
+                }}
+                title={c.id}
+              />
+            ))}
+          </div>
+        </PickerButton>
 
         {/* Shape with picker */}
-        <div style={{ position: 'relative' }}>
-          <ToolButton
-            isActive={activeTool === 'shape'}
-            onClick={() => { setActiveTool('shape'); setShowShapeMenu(!showShapeMenu); setShowStickyMenu(false); }}
-            title="Shapes"
-            icon={Shapes}
-            theme={theme}
-          />
-          {showShapeMenu && (
-            <div style={{
-              position: 'absolute', left: '64px', top: '0',
-              background: theme.surface, borderRadius: '12px',
-              boxShadow: darkMode ? '0 8px 24px rgba(0,0,0,0.5)' : '0 8px 24px rgba(0,0,0,0.12)',
-              padding: '10px', zIndex: 20,
-              animation: 'popIn 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
-            }}>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '6px' }}>
-                {SHAPE_PICKER.map(s => {
-                  const SIcon = s.icon;
-                  const isActive = shapeType === s.id;
-                  const activeBg = darkMode ? 'rgba(33,150,243,0.15)' : '#e3f2fd';
-                  return (
-                    <button
-                      key={s.id}
-                      onClick={() => { setShapeType(s.id); setShowShapeMenu(false); }}
-                      title={s.label}
-                      style={{
-                        width: '28px', height: '28px', border: 'none', borderRadius: '6px',
-                        background: isActive ? activeBg : 'transparent',
-                        color: isActive ? '#2196F3' : theme.textSecondary,
-                        cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        transition: 'all 0.15s',
-                        transform: isActive ? 'scale(1.15)' : 'scale(1)',
-                      }}
-                      onMouseEnter={(e) => { e.currentTarget.style.background = isActive ? activeBg : theme.surfaceHover; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.background = isActive ? activeBg : 'transparent'; }}
-                    >
-                      <SIcon size={16} />
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-        </div>
+        <PickerButton
+          activeTool={activeTool}
+          toolId="shape"
+          icon={Shapes}
+          label="Shapes"
+          showMenu={showShapeMenu}
+          onToggle={() => { setActiveTool('shape'); setShowShapeMenu(!showShapeMenu); setShowStickyMenu(false); }}
+          theme={theme}
+          darkMode={darkMode}
+        >
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '6px' }}>
+            {SHAPE_PICKER.map(s => {
+              const SIcon = s.icon;
+              const isActive = shapeType === s.id;
+              const activeBg = darkMode ? 'rgba(33,150,243,0.15)' : '#e3f2fd';
+              return (
+                <button
+                  key={s.id}
+                  onClick={() => { setShapeType(s.id); setShowShapeMenu(false); }}
+                  title={s.label}
+                  style={{
+                    width: '28px', height: '28px', border: 'none', borderRadius: '6px',
+                    background: isActive ? activeBg : 'transparent',
+                    color: isActive ? '#2196F3' : theme.textSecondary,
+                    cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    transition: 'all 0.15s',
+                    transform: isActive ? 'scale(1.15)' : 'scale(1)',
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = isActive ? activeBg : theme.surfaceHover; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = isActive ? activeBg : 'transparent'; }}
+                >
+                  <SIcon size={16} />
+                </button>
+              );
+            })}
+          </div>
+        </PickerButton>
 
         {/* Frame tool */}
         <ToolButton

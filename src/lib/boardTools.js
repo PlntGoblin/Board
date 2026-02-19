@@ -49,6 +49,24 @@ export const boardTools = [
     },
   },
   {
+    name: "createConnector",
+    description: "Create a connector (arrow or line) between two objects on the board. Calculates connection points from object centers automatically.",
+    parameters: {
+      type: "object",
+      properties: {
+        fromId: { type: "number", description: "ID of the source object to connect from" },
+        toId: { type: "number", description: "ID of the target object to connect to" },
+        style: {
+          type: "string",
+          description: "Style of the connector",
+          enum: ["arrow", "line", "dashed"],
+        },
+        color: { type: "string", description: "Color of the connector (e.g. '#667eea', 'white'). Defaults to white." },
+      },
+      required: ["fromId", "toId", "style"],
+    },
+  },
+  {
     name: "moveObject",
     description: "Move an object to a new position. Can move multiple objects if objectIds is an array.",
     parameters: {
@@ -128,6 +146,30 @@ export const boardTools = [
         height: { type: "number", description: "New height" },
       },
       required: ["objectIds", "width", "height"],
+    },
+  },
+  {
+    name: "createDrawing",
+    description: "Draw a freehand path on the board by specifying a series of x,y points. Use this to sketch simple illustrations like icons, doodles, underlines, circles, arrows, or simple figures. Each point is relative to the board coordinate system.",
+    parameters: {
+      type: "object",
+      properties: {
+        points: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              x: { type: "number", description: "X coordinate" },
+              y: { type: "number", description: "Y coordinate" },
+            },
+            required: ["x", "y"],
+          },
+          description: "Array of {x, y} points that form the path",
+        },
+        color: { type: "string", description: "Stroke color (e.g. '#ffffff', 'yellow')" },
+        strokeWidth: { type: "number", description: "Width of the stroke (default 3)" },
+      },
+      required: ["points", "color"],
     },
   },
   {

@@ -254,6 +254,25 @@ const AIBoard = () => {
         setBoardObjects(prev => [...prev, n]);
         return { success: true, objectId: n.id };
       }
+      case "createConnector": {
+        const fromObj = boardObjects.find(o => o.id === toolInput.fromId);
+        const toObj = boardObjects.find(o => o.id === toolInput.toId);
+        if (!fromObj || !toObj) return { success: false, error: `Object not found: ${!fromObj ? toolInput.fromId : toolInput.toId}` };
+        const fromCenterX = fromObj.x + (fromObj.width || 200) / 2;
+        const fromCenterY = fromObj.y + (fromObj.height || 200) / 2;
+        const toCenterX = toObj.x + (toObj.width || 200) / 2;
+        const toCenterY = toObj.y + (toObj.height || 200) / 2;
+        const connectorType = toolInput.style === 'line' || toolInput.style === 'dashed' ? 'line' : 'arrow';
+        const n = {
+          id: nextId.current++, type: connectorType,
+          x1: fromCenterX, y1: fromCenterY, x2: toCenterX, y2: toCenterY,
+          color: toolInput.color || '#ffffff', strokeWidth: 2,
+          fromId: toolInput.fromId, toId: toolInput.toId,
+          ...(toolInput.style === 'dashed' ? { strokeDasharray: '8 4' } : {}),
+        };
+        setBoardObjects(prev => [...prev, n]);
+        return { success: true, objectId: n.id, type: connectorType };
+      }
       case "moveObject": {
         setBoardObjects(prev => prev.map(obj => toolInput.objectIds.includes(obj.id)
           ? { ...obj, x: toolInput.relative ? obj.x + toolInput.x : toolInput.x, y: toolInput.relative ? obj.y + toolInput.y : toolInput.y }
@@ -282,13 +301,19 @@ const AIBoard = () => {
         setBoardObjects(prev => prev.map(obj => toolInput.objectIds.includes(obj.id) ? { ...obj, width: toolInput.width, height: toolInput.height } : obj));
         return { success: true, resizedCount: toolInput.objectIds.length };
       }
+      case "createDrawing": {
+        if (!toolInput.points?.length || toolInput.points.length < 2) return { success: false, error: 'Need at least 2 points' };
+        const n = { id: nextId.current++, type: 'path', points: toolInput.points, color: toolInput.color || '#ffffff', strokeWidth: toolInput.strokeWidth || 3 };
+        setBoardObjects(prev => [...prev, n]);
+        return { success: true, objectId: n.id };
+      }
       case "createText": {
         const n = { id: nextId.current++, type: 'text', x: toolInput.x, y: toolInput.y, width: 200, height: 50, text: toolInput.text };
         setBoardObjects(prev => [...prev, n]);
         return { success: true, objectId: n.id };
       }
       case "getBoardState":
-        return { objects: boardObjects.map(({ id, type, x, y, width, height, color, text, title, shapeType }) => ({ id, type, x, y, width, height, color, text, title, shapeType })) };
+        return { objects: boardObjects.map(({ id, type, x, y, width, height, color, text, title, shapeType, x1, y1, x2, y2, fromId, toId }) => ({ id, type, x, y, width, height, color, text, title, shapeType, ...(x1 !== undefined ? { x1, y1, x2, y2 } : {}), ...(fromId !== undefined ? { fromId, toId } : {}) })) };
       case "zoomToFit": {
         const targets = toolInput.objectIds?.length
           ? boardObjects.filter(obj => toolInput.objectIds.includes(obj.id))
@@ -328,18 +353,48 @@ const AIBoard = () => {
   // --- AI command processing ---
   const systemMessage = {
     role: "system",
-    content: `You are an AI assistant that helps users create and manipulate elements on a visual collaboration board (like Miro). Use the provided tools to create sticky notes, shapes, text, frames, and organize them.
+    content: `You are an AI assistant that helps users create and manipulate elements on a visual collaboration board (like Miro). Use the provided tools to create sticky notes, shapes, text, frames, connectors, and organize them.
 
 Rules:
 - ALWAYS call getBoardState first when the user references existing objects or wants to manipulate the board.
 - Prefer modifying existing objects (move, resize, recolor) over deleting and recreating them.
 - Never move objects the user didn't ask you to move.
 - Understand spatial relationships: an object is "inside" a frame if its x,y position falls within the frame's x,y,width,height bounds.
-- When a command is ambiguous, ask the user to clarify before acting. For example "resize the frame to fit its contents" could mean: (A) resize the frame's bounding box to tightly wrap the elements inside it, or (B) zoom the viewport so all board content is visible. Ask which one they mean.
+- When a command is ambiguous, ask the user to clarify before acting.
 - When resizing a frame to fit contents: find objects inside/near the frame, calculate their bounding box (min x, min y, max x+width, max y+height), add ~20px padding, then use resizeObject and optionally moveObject on the FRAME only — never move the contents.
 - Place new elements at reasonable positions that don't overlap existing ones.
 - When arranging in grids, account for object sizes (sticky notes are 200x200, shapes vary).
-- Be creative and helpful.`,
+- Use createConnector to draw arrows or lines between related objects (e.g. journey map stages, flow diagrams).
+- Be creative and helpful.
+
+Template Blueprints — when the user asks for one of these, follow the layout precisely:
+
+SWOT Analysis:
+- Create 4 frames in a 2x2 grid: "Strengths" (top-left, green sticky), "Weaknesses" (top-right, pink sticky), "Opportunities" (bottom-left, blue sticky), "Threats" (bottom-right, orange sticky).
+- Each frame should be ~400x350. Use ~20px gap between frames. Place a placeholder sticky note inside each frame with example text like "Add strengths here...".
+- Position: start at x=100, y=100. So: Strengths(100,100), Weaknesses(520,100), Opportunities(100,470), Threats(520,470).
+
+User Journey Map:
+- Create a horizontal row of frames for each stage (e.g. 5 stages: "Awareness", "Consideration", "Purchase", "Onboarding", "Retention").
+- Each frame ~300x400, spaced horizontally with ~20px gaps.
+- Inside each frame, add 2-3 sticky notes for: "User Action" (blue), "Touchpoint" (yellow), "Pain Point" (pink).
+- Connect the frames in sequence using createConnector with style "arrow" to show the flow from left to right.
+
+Retrospective Board:
+- Create 3 frames side by side: "What Went Well" (green stickies), "What Didn't Go Well" (pink stickies), "Action Items" (blue stickies).
+- Each frame ~350x450, spaced horizontally with ~20px gaps. Start at x=100, y=100.
+- Place 2-3 placeholder sticky notes inside each frame with example text.
+
+Kanban Board:
+- Create 3-4 frames side by side: "To Do", "In Progress", "Review", "Done".
+- Each frame ~300x500, spaced horizontally with ~20px gaps.
+- Add 2-3 example sticky notes in "To Do" column.
+
+Pro/Con Grid:
+- Create a 2-column layout with frames: "Pros" (green stickies) and "Cons" (pink stickies).
+- Place placeholder sticky notes inside each.
+
+For any template, always call zoomToFit at the end so the user can see the full result.`,
   };
 
   const openaiTools = boardTools.map(t => ({
@@ -357,9 +412,15 @@ Rules:
     try {
       let currentMessages = [systemMessage, ...newHistory];
       let continueProcessing = true;
+      let iterations = 0;
+      const MAX_ITERATIONS = 10;
 
-      while (continueProcessing) {
+      while (continueProcessing && iterations < MAX_ITERATIONS) {
+        iterations++;
+        console.log(`[AI Loop] Iteration ${iterations}`);
         const { data: { session: freshSession } } = await supabase.auth.getSession();
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 30000);
         const response = await fetch(`${API_URL}/api/messages`, {
           method: "POST",
           headers: { "Content-Type": "application/json", "Authorization": `Bearer ${freshSession?.access_token}` },
@@ -369,7 +430,9 @@ Rules:
             tools: openaiTools,
             messages: currentMessages,
           }),
+          signal: controller.signal,
         });
+        clearTimeout(timeout);
         const data = await response.json();
         if (!response.ok) throw new Error(data.error?.message || 'API request failed');
 
@@ -385,8 +448,10 @@ Rules:
 
         // Handle tool calls
         if (message.tool_calls?.length) {
-          // Append assistant message (with tool_calls) to history
-          currentMessages = [...currentMessages, message];
+          // Append assistant message (only API-safe fields) to history
+          const cleanMessage = { role: message.role, tool_calls: message.tool_calls };
+          if (message.content) cleanMessage.content = message.content;
+          currentMessages = [...currentMessages, cleanMessage];
 
           for (const toolCall of message.tool_calls) {
             const result = executeToolCall(toolCall.function.name, JSON.parse(toolCall.function.arguments));
@@ -397,6 +462,7 @@ Rules:
           }
         }
 
+        console.log(`[AI Loop] finish_reason: ${choice.finish_reason}, tool_calls: ${message.tool_calls?.length || 0}`);
         continueProcessing = choice.finish_reason === 'tool_calls';
         if (!continueProcessing) {
           setConversationHistory([...newHistory, { role: "assistant", content: message.content || '' }]);
