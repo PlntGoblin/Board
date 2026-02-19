@@ -177,7 +177,7 @@ export default function AIChat({
               filter: 'drop-shadow(0 0 8px rgba(102, 126, 234, 0.6))',
               animation: 'rocket-float 3s ease-in-out infinite',
             }}>
-              🚀
+              🧑‍🚀
             </div>
             <div style={{
               fontSize: '14px', fontWeight: '700',
