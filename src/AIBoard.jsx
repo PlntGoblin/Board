@@ -340,6 +340,63 @@ const AIBoard = () => {
         });
         return { success: true, zoomedToCount: targets.length };
       }
+      case "findOpenSpace": {
+        const pad = 40;
+        const needW = toolInput.width;
+        const needH = toolInput.height;
+
+        // Start from the center of the user's current viewport
+        const vpCenterX = (-viewportOffset.x + window.innerWidth / 2) / zoom;
+        const vpCenterY = (-viewportOffset.y + window.innerHeight / 2) / zoom;
+
+        if (boardObjects.length === 0) {
+          return { x: Math.round(vpCenterX - needW / 2), y: Math.round(vpCenterY - needH / 2) };
+        }
+
+        // Check if a candidate rectangle overlaps any existing object
+        const overlaps = (cx, cy) => {
+          for (const obj of boardObjects) {
+            const b = getObjBounds(obj);
+            if (cx < b.x + b.w + pad && cx + needW + pad > b.x &&
+                cy < b.y + b.h + pad && cy + needH + pad > b.y) {
+              return true;
+            }
+          }
+          return false;
+        };
+
+        // Try placing near the viewport center first, then search outward
+        const startX = Math.round(vpCenterX - needW / 2);
+        const startY = Math.round(vpCenterY - needH / 2);
+
+        // Try viewport center
+        if (!overlaps(startX, startY)) {
+          return { x: startX, y: startY };
+        }
+
+        // Search nearby: right, below, left, above — expanding outward
+        const step = 200;
+        for (let dist = step; dist <= 2000; dist += step) {
+          // Right of viewport center
+          if (!overlaps(startX + dist, startY)) return { x: startX + dist, y: startY };
+          // Below
+          if (!overlaps(startX, startY + dist)) return { x: startX, y: startY + dist };
+          // Left
+          if (!overlaps(startX - dist, startY)) return { x: startX - dist, y: startY };
+          // Above
+          if (!overlaps(startX, startY - dist)) return { x: startX, y: startY - dist };
+        }
+
+        // Fallback: just to the right of everything
+        let maxRight = -Infinity;
+        let minObjY = Infinity;
+        for (const obj of boardObjects) {
+          const b = getObjBounds(obj);
+          maxRight = Math.max(maxRight, b.x + b.w);
+          minObjY = Math.min(minObjY, b.y);
+        }
+        return { x: Math.round(maxRight + pad), y: Math.round(minObjY) };
+      }
       case "deleteObjects": {
         const ids = new Set(toolInput.objectIds);
         setBoardObjects(prev => prev.filter(obj => !ids.has(obj.id)));
@@ -357,40 +414,41 @@ const AIBoard = () => {
 
 Rules:
 - ALWAYS call getBoardState first when the user references existing objects or wants to manipulate the board.
+- ALWAYS call findOpenSpace BEFORE creating templates or placing multiple new objects. This returns x,y coordinates for an unoccupied area. Use those coordinates as your starting point — NEVER use hardcoded positions like x=100, y=100.
 - Prefer modifying existing objects (move, resize, recolor) over deleting and recreating them.
 - Never move objects the user didn't ask you to move.
 - Understand spatial relationships: an object is "inside" a frame if its x,y position falls within the frame's x,y,width,height bounds.
 - When a command is ambiguous, ask the user to clarify before acting.
 - When resizing a frame to fit contents: find objects inside/near the frame, calculate their bounding box (min x, min y, max x+width, max y+height), add ~20px padding, then use resizeObject and optionally moveObject on the FRAME only — never move the contents.
-- Place new elements at reasonable positions that don't overlap existing ones.
 - When arranging in grids, account for object sizes (sticky notes are 200x200, shapes vary).
 - Use createConnector to draw arrows or lines between related objects (e.g. journey map stages, flow diagrams).
 - Be creative and helpful.
 
-Template Blueprints — when the user asks for one of these, follow the layout precisely:
+Template Blueprints — when the user asks for one of these, follow the layout precisely.
+IMPORTANT: Always call findOpenSpace first with the total width and height needed, then use the returned x,y as the starting position for the template.
 
-SWOT Analysis:
+SWOT Analysis (total ~940x720):
 - Create 4 frames in a 2x2 grid: "Strengths" (top-left, green sticky), "Weaknesses" (top-right, pink sticky), "Opportunities" (bottom-left, blue sticky), "Threats" (bottom-right, orange sticky).
-- Each frame should be ~400x350. Use ~20px gap between frames. Place a placeholder sticky note inside each frame with example text like "Add strengths here...".
-- Position: start at x=100, y=100. So: Strengths(100,100), Weaknesses(520,100), Opportunities(100,470), Threats(520,470).
+- Each frame ~400x350. Use ~20px gap between frames. Place a placeholder sticky note inside each frame.
+- Offsets from start: Strengths(+0,+0), Weaknesses(+420,+0), Opportunities(+0,+370), Threats(+420,+370).
 
-User Journey Map:
+User Journey Map (total ~1600x400):
 - Create a horizontal row of frames for each stage (e.g. 5 stages: "Awareness", "Consideration", "Purchase", "Onboarding", "Retention").
 - Each frame ~300x400, spaced horizontally with ~20px gaps.
 - Inside each frame, add 2-3 sticky notes for: "User Action" (blue), "Touchpoint" (yellow), "Pain Point" (pink).
-- Connect the frames in sequence using createConnector with style "arrow" to show the flow from left to right.
+- Connect the frames in sequence using createConnector with style "arrow".
 
-Retrospective Board:
+Retrospective Board (total ~1090x450):
 - Create 3 frames side by side: "What Went Well" (green stickies), "What Didn't Go Well" (pink stickies), "Action Items" (blue stickies).
-- Each frame ~350x450, spaced horizontally with ~20px gaps. Start at x=100, y=100.
-- Place 2-3 placeholder sticky notes inside each frame with example text.
+- Each frame ~350x450, spaced horizontally with ~20px gaps.
+- Place 2-3 placeholder sticky notes inside each frame.
 
-Kanban Board:
+Kanban Board (total ~1280x500):
 - Create 3-4 frames side by side: "To Do", "In Progress", "Review", "Done".
 - Each frame ~300x500, spaced horizontally with ~20px gaps.
 - Add 2-3 example sticky notes in "To Do" column.
 
-Pro/Con Grid:
+Pro/Con Grid (total ~720x400):
 - Create a 2-column layout with frames: "Pros" (green stickies) and "Cons" (pink stickies).
 - Place placeholder sticky notes inside each.
 

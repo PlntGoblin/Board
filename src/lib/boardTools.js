@@ -210,6 +210,18 @@ export const boardTools = [
     },
   },
   {
+    name: "findOpenSpace",
+    description: "Find an unoccupied area on the board large enough to fit content of the given width and height. Returns x,y coordinates for placement that won't overlap existing objects. ALWAYS call this before creating templates or multiple objects.",
+    parameters: {
+      type: "object",
+      properties: {
+        width: { type: "number", description: "Required width of the open space" },
+        height: { type: "number", description: "Required height of the open space" },
+      },
+      required: ["width", "height"],
+    },
+  },
+  {
     name: "deleteObjects",
     description: "Delete one or more objects from the board",
     parameters: {
