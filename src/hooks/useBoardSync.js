@@ -6,8 +6,12 @@ export function useBoardSync(boardId, boardObjects, setBoardObjects, user) {
   const channelRef = useRef(null);
   const ignoreNextUpdate = useRef(false);
   const prevObjectsRef = useRef(boardObjects);
+  const boardObjectsRef = useRef(boardObjects);
   const lastBroadcastTime = useRef(0);
   const trailingTimeout = useRef(null);
+
+  // Always keep boardObjectsRef current so async callbacks can read the latest state
+  boardObjectsRef.current = boardObjects;
 
   // Keep prevObjectsRef in sync (but skip when we just applied remote ops)
   useEffect(() => {
@@ -55,6 +59,9 @@ export function useBoardSync(boardId, boardObjects, setBoardObjects, user) {
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') {
           channelRef.current = channel;
+          // Sync the baseline to whatever is loaded now so we don't
+          // re-broadcast the entire board as fresh creates on the first change
+          prevObjectsRef.current = boardObjectsRef.current;
         }
       });
 
