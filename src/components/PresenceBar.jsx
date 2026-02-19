@@ -1,4 +1,14 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
+
+const PRESENCE_MESSAGES = [
+  "Another mind enters the orbit ✨",
+  "Crew expanding 🚀",
+  "More brains in the galaxy 🧠",
+  "Welcome to the mission 👩‍🚀👨‍🚀",
+  "Ideas love company 💡",
+  "Collaboration level: increasing",
+  "The universe just got smarter 😉",
+];
 
 const COLORS = [
   '#667eea', '#764ba2', '#f5576c', '#4facfe',
@@ -27,6 +37,9 @@ const MAX_VISIBLE = 3;
 export default function PresenceBar({ users, currentUser, theme }) {
   const [open, setOpen] = useState(false);
   const containerRef = useRef(null);
+  const [headerMsg, setHeaderMsg] = useState(() =>
+    PRESENCE_MESSAGES[Math.floor(Math.random() * PRESENCE_MESSAGES.length)]
+  );
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -58,7 +71,10 @@ export default function PresenceBar({ users, currentUser, theme }) {
   return (
     <div ref={containerRef} style={{ position: 'relative' }}>
       <div
-        onClick={() => setOpen(!open)}
+        onClick={() => {
+          if (!open) setHeaderMsg(PRESENCE_MESSAGES[Math.floor(Math.random() * PRESENCE_MESSAGES.length)]);
+          setOpen(!open);
+        }}
         style={{
           display: 'flex',
           alignItems: 'center',
@@ -137,7 +153,7 @@ export default function PresenceBar({ users, currentUser, theme }) {
             textTransform: 'uppercase',
             letterSpacing: '0.5px',
           }}>
-            Online — {uniqueUsers.length}
+            {headerMsg}
           </div>
           {uniqueUsers.map((u) => {
             const isCurrentUser = u.user_id === currentUser?.id;

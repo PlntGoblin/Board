@@ -1,4 +1,4 @@
-import { Send, Loader2, Check } from 'lucide-react';
+import { Send, Loader2, Check, Minus } from 'lucide-react';
 
 function formatResponse(text) {
   if (!text) return null;
@@ -108,6 +108,39 @@ export default function AIChat({
           display: 'flex', flexDirection: 'column',
           overflow: 'hidden',
         }}>
+          {/* Minimize button */}
+          <button
+            onClick={() => setShowAIChat(false)}
+            style={{
+              position: 'absolute',
+              top: '10px',
+              right: '10px',
+              width: '26px',
+              height: '26px',
+              borderRadius: '8px',
+              background: 'rgba(255, 255, 255, 0.06)',
+              border: '1px solid rgba(255, 255, 255, 0.08)',
+              color: 'rgba(160, 175, 220, 0.5)',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              transition: 'all 0.2s',
+              zIndex: 10,
+              padding: 0,
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'rgba(255, 255, 255, 0.12)';
+              e.currentTarget.style.color = '#c4d0ff';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'rgba(255, 255, 255, 0.06)';
+              e.currentTarget.style.color = 'rgba(160, 175, 220, 0.5)';
+            }}
+          >
+            <Minus size={14} />
+          </button>
+
           {/* Starfield background */}
           {[...Array(12)].map((_, i) => (
             <div key={i} style={{
