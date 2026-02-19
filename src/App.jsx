@@ -3,6 +3,7 @@ import { AuthProvider } from './context/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import Dashboard from './components/Dashboard';
 import AIBoard from './AIBoard';
+import ResetPassword from './components/ResetPassword';
 
 function App() {
   return (
@@ -15,6 +16,7 @@ function App() {
           <Route path="/board/:id" element={
             <ProtectedRoute><AIBoard /></ProtectedRoute>
           } />
+          <Route path="/reset-password" element={<ResetPassword />} />
         </Routes>
       </BrowserRouter>
     </AuthProvider>

@@ -21,7 +21,7 @@ const FEATURES = [
 ];
 
 export default function AuthModal({ redirectTo }) {
-  const { signIn, signUp } = useAuth();
+  const { signIn, signUp, resetPassword } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -29,6 +29,8 @@ export default function AuthModal({ redirectTo }) {
   const [showPasswordText, setShowPasswordText] = useState(false);
   const [isSignUp, setIsSignUp] = useState(false);
   const [confirmationSent, setConfirmationSent] = useState(false);
+  const [isForgot, setIsForgot] = useState(false);
+  const [resetSent, setResetSent] = useState(false);
   const hasVisitedBefore = !!localStorage.getItem('keepLoggedIn');
 
   const stars = useMemo(() => {
@@ -54,6 +56,20 @@ export default function AuthModal({ redirectTo }) {
       cycleDuration: `${9 + Math.random() * 5}s`,
     }));
   }, []);
+
+  const handleForgotPassword = async (e) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+    try {
+      await resetPassword(email);
+      setResetSent(true);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -283,7 +299,103 @@ export default function AuthModal({ redirectTo }) {
             borderRadius: '16px',
             padding: '28px',
           }}>
-            {confirmationSent ? (
+            {resetSent ? (
+              <div style={{ textAlign: 'center' }}>
+                <div style={{
+                  width: '48px', height: '48px', borderRadius: '50%',
+                  background: 'rgba(56,189,248,0.1)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  margin: '0 auto 16px',
+                }}>
+                  <Mail size={22} color="#38bdf8" />
+                </div>
+                <h3 style={{ margin: '0 0 8px', fontSize: '16px', fontWeight: '600', color: '#f0f4ff' }}>
+                  Check your email
+                </h3>
+                <p style={{ margin: '0 0 20px', fontSize: '14px', color: '#64748b', lineHeight: '1.6' }}>
+                  We sent a password reset link to<br />
+                  <span style={{ color: '#38bdf8' }}>{email}</span>
+                </p>
+                <button
+                  onClick={() => { setResetSent(false); setIsForgot(false); setError(''); }}
+                  style={{
+                    padding: '10px 20px',
+                    background: 'rgba(255,255,255,0.06)',
+                    border: '1px solid rgba(255,255,255,0.1)',
+                    borderRadius: '8px',
+                    color: '#f0f4ff',
+                    fontSize: '13px',
+                    cursor: 'pointer',
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}
+                  onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.06)'}
+                >
+                  Back to sign in
+                </button>
+              </div>
+            ) : isForgot ? (
+              <form onSubmit={handleForgotPassword}>
+                <p style={{ margin: '0 0 16px', fontSize: '13px', color: '#64748b', lineHeight: '1.6' }}>
+                  Enter your email and we'll send you a link to reset your password.
+                </p>
+                <div style={{ marginBottom: '16px' }}>
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="Email"
+                    required
+                    style={{
+                      width: '100%', padding: '11px 14px',
+                      background: 'rgba(255,255,255,0.05)',
+                      border: '1px solid rgba(255,255,255,0.09)',
+                      borderRadius: '10px', fontSize: '14px',
+                      color: '#f0f4ff', outline: 'none',
+                      boxSizing: 'border-box', transition: 'all 0.2s',
+                    }}
+                    onFocus={(e) => { e.target.style.borderColor = 'rgba(56,189,248,0.5)'; e.target.style.boxShadow = '0 0 0 3px rgba(56,189,248,0.08)'; }}
+                    onBlur={(e) => { e.target.style.borderColor = 'rgba(255,255,255,0.09)'; e.target.style.boxShadow = 'none'; }}
+                  />
+                </div>
+                {error && (
+                  <div style={{
+                    padding: '10px 14px', background: 'rgba(239,68,68,0.08)',
+                    border: '1px solid rgba(239,68,68,0.2)', borderRadius: '10px',
+                    color: '#fca5a5', fontSize: '13px', marginBottom: '14px',
+                  }}>
+                    {error}
+                  </div>
+                )}
+                <button
+                  type="submit"
+                  disabled={loading}
+                  style={{
+                    width: '100%', padding: '12px',
+                    background: loading ? 'rgba(56,189,248,0.25)' : 'linear-gradient(135deg, #38bdf8, #818cf8)',
+                    color: 'white', border: 'none', borderRadius: '10px',
+                    fontSize: '14px', fontWeight: '600',
+                    cursor: loading ? 'not-allowed' : 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+                    boxShadow: loading ? 'none' : '0 0 24px rgba(56,189,248,0.18)',
+                  }}
+                >
+                  {loading ? 'Sending...' : <><ArrowRight size={16} /> Send reset link</>}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setIsForgot(false); setError(''); }}
+                  style={{
+                    width: '100%', marginTop: '10px', padding: '10px',
+                    background: 'none', border: 'none',
+                    color: '#475569', fontSize: '13px', cursor: 'pointer',
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.color = '#94a3b8'}
+                  onMouseLeave={(e) => e.currentTarget.style.color = '#475569'}
+                >
+                  Back to sign in
+                </button>
+              </form>
+            ) : confirmationSent ? (
               <div style={{ textAlign: 'center' }}>
                 <div style={{
                   width: '48px', height: '48px', borderRadius: '50%',
@@ -350,7 +462,7 @@ export default function AuthModal({ redirectTo }) {
                   />
                 </div>
 
-                <div style={{ marginBottom: '18px' }}>
+                <div style={{ marginBottom: isSignUp ? '18px' : '8px' }}>
                   <div style={{ position: 'relative' }}>
                     <input
                       type={showPasswordText ? 'text' : 'password'}
@@ -396,6 +508,24 @@ export default function AuthModal({ redirectTo }) {
                     </button>
                   </div>
                 </div>
+
+                {!isSignUp && (
+                  <div style={{ textAlign: 'right', marginBottom: '18px' }}>
+                    <button
+                      type="button"
+                      onClick={() => { setIsForgot(true); setError(''); }}
+                      style={{
+                        background: 'none', border: 'none',
+                        color: '#475569', fontSize: '12px',
+                        cursor: 'pointer', padding: 0,
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.color = '#38bdf8'}
+                      onMouseLeave={(e) => e.currentTarget.style.color = '#475569'}
+                    >
+                      Forgot password?
+                    </button>
+                  </div>
+                )}
 
                 {error && (
                   <div style={{

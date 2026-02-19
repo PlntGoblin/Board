@@ -397,13 +397,15 @@ function TextObject({ obj, isSelected, isEditing, editingText, setEditingId, set
           if (!isEditing) { setEditingId(obj.id); setEditingText(obj.text); }
         }}
         style={{
-          minWidth: obj.width || 100, padding: '8px',
+          width: isEditing ? (obj.width || undefined) : (obj.width ? obj.width : 'fit-content'),
+          minWidth: isEditing ? '200px' : '20px',
+          padding: '8px', position: 'relative',
           border: isSelected ? '2px solid #2196F3' : '2px solid transparent',
           borderRadius: '4px', cursor: isEditing ? 'text' : 'move',
           fontSize: `${textFontSize}px`, fontFamily: 'system-ui, sans-serif',
           fontWeight: obj.fontWeight || 'normal', textAlign: textAlign,
           color: textColor, userSelect: isEditing ? 'text' : 'none',
-          whiteSpace: 'pre-wrap',
+          whiteSpace: 'pre-wrap', boxSizing: 'border-box',
         }}
       >
         {isEditing ? (

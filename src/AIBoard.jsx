@@ -599,7 +599,11 @@ For any template, always call zoomToFit at the end so the user can see the full 
       if (isResizing && selectedId) {
         const mouseX = (clientX - viewportOffset.x) / zoom;
         const mouseY = (clientY - viewportOffset.y) / zoom;
-        setBoardObjects(prev => prev.map(obj => obj.id === selectedId ? { ...obj, width: Math.max(50, mouseX - obj.x), height: Math.max(50, mouseY - obj.y) } : obj));
+        setBoardObjects(prev => prev.map(obj => {
+          if (obj.id !== selectedId) return obj;
+          const newWidth = Math.max(50, mouseX - obj.x);
+          return { ...obj, width: newWidth, height: Math.max(50, mouseY - obj.y) };
+        }));
         return;
       }
 

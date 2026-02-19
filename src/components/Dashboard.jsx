@@ -126,6 +126,8 @@ export default function Dashboard() {
   const navigate = useNavigate();
   const [boards, setBoards] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [createError, setCreateError] = useState('');
+  const [creating, setCreating] = useState(false);
   const [selectedNav, setSelectedNav] = useState('home');
   const [viewMode, setViewMode] = useState('grid');
   const [searchQuery, setSearchQuery] = useState('');
@@ -169,11 +171,15 @@ export default function Dashboard() {
   };
 
   const handleNewBoard = async () => {
+    setCreateError('');
+    setCreating(true);
     try {
       const board = await createBoard('Untitled Board');
       navigate(`/board/${board.id}`);
-    } catch {
-      // navigation only happens on success
+    } catch (err) {
+      setCreateError(err.message || 'Failed to create board');
+    } finally {
+      setCreating(false);
     }
   };
 
@@ -604,27 +610,35 @@ export default function Dashboard() {
             </div>
 
             {/* New board */}
-            <button
-              onClick={handleNewBoard}
-              style={{
-                display: 'flex', alignItems: 'center', gap: '6px',
-                padding: '8px 16px',
-                background: 'linear-gradient(135deg, #38bdf8, #818cf8)',
-                color: 'white',
-                border: 'none',
-                borderRadius: '10px',
-                cursor: 'pointer',
-                fontSize: '13px',
-                fontWeight: '600',
-                transition: 'all 0.2s',
-                boxShadow: '0 0 20px rgba(56,189,248,0.2)',
-              }}
-              onMouseEnter={(e) => e.currentTarget.style.boxShadow = '0 0 30px rgba(56,189,248,0.35)'}
-              onMouseLeave={(e) => e.currentTarget.style.boxShadow = '0 0 20px rgba(56,189,248,0.2)'}
-            >
-              <Plus size={16} />
-              New board
-            </button>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
+              <button
+                onClick={handleNewBoard}
+                disabled={creating}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '6px',
+                  padding: '8px 16px',
+                  background: creating ? 'rgba(56,189,248,0.4)' : 'linear-gradient(135deg, #38bdf8, #818cf8)',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '10px',
+                  cursor: creating ? 'not-allowed' : 'pointer',
+                  fontSize: '13px',
+                  fontWeight: '600',
+                  transition: 'all 0.2s',
+                  boxShadow: '0 0 20px rgba(56,189,248,0.2)',
+                }}
+                onMouseEnter={(e) => { if (!creating) e.currentTarget.style.boxShadow = '0 0 30px rgba(56,189,248,0.35)'; }}
+                onMouseLeave={(e) => { if (!creating) e.currentTarget.style.boxShadow = '0 0 20px rgba(56,189,248,0.2)'; }}
+              >
+                <Plus size={16} />
+                {creating ? 'Creating...' : 'New board'}
+              </button>
+              {createError && (
+                <span style={{ fontSize: '12px', color: '#f87171', maxWidth: '200px', textAlign: 'right' }}>
+                  {createError}
+                </span>
+              )}
+            </div>
 
             {/* Avatar */}
             <div style={{ position: 'relative' }} data-user-menu>
