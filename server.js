@@ -263,6 +263,49 @@ app.post('/api/messages', authenticate, async (req, res) => {
   }
 });
 
+// Web search via Tavily REST API (auth-protected)
+app.post('/api/search', authenticate, async (req, res) => {
+  try {
+    const { query } = req.body;
+    const response = await fetch('https://api.tavily.com/search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        api_key: process.env.TAVILY_API_KEY,
+        query,
+        max_results: 8,
+        include_answer: false,
+      }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.detail || data.message || 'Tavily search failed');
+    res.json({ results: data.results || [] });
+  } catch (error) {
+    console.error('Search error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Structured content generation (auth-protected)
+app.post('/api/generate-content', authenticate, async (req, res) => {
+  try {
+    const { topic, type, count = 4 } = req.body;
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [{
+        role: 'user',
+        content: `Generate exactly ${count} concise ${type} for the topic: "${topic}". Each item should be 5-15 words, punchy and specific. Return ONLY valid JSON: {"items": ["...", "..."]}`
+      }],
+      response_format: { type: 'json_object' },
+    });
+    const result = JSON.parse(completion.choices[0].message.content);
+    res.json(result);
+  } catch (error) {
+    console.error('Generate content error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
