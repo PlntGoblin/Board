@@ -727,8 +727,9 @@ Rules:
 - When resizing a frame to fit contents: find objects inside/near the frame, calculate their bounding box (min x, min y, max x+width, max y+height), add ~20px padding, then use resizeObject and optionally moveObject on the FRAME only — never move the contents.
 - When arranging in grids, account for object sizes (sticky notes are 200x200, shapes vary).
 - Use createConnector to draw arrows or lines between related objects (e.g. journey map stages, flow diagrams).
-- Use webSearch when the user wants current/real information (news, facts, research). After searching, create sticky notes with key findings.
-- Use generateContent to pre-fill templates with relevant ideas, risks, action items, etc. — then place results as sticky notes. Pair it with createStickyNote in one batched response.
+- Use webSearch when the user wants current/real information (news, facts, research). After searching, ALWAYS call createStickyNote for each key finding — never just describe them in text.
+- Use generateContent to pre-fill templates with relevant ideas, risks, action items, etc. In the SAME response, immediately follow with createStickyNote calls for each generated item. Never describe sticky notes in text — always call the tool.
+- CRITICAL: When asked to create sticky notes (directly or via generateContent/webSearch), you MUST call createStickyNote tool(s). Responding with only text is not acceptable.
 - Use alignObjects to line up objects along a common edge (e.g. "align left", "center horizontally").
 - Use distributeObjects to evenly space 3+ objects (e.g. "distribute horizontally").
 - CRITICAL: When the user says "arrange these", "space these", "align these", "move these", or any command referencing "these"/"them" — ALWAYS use the selected object IDs listed above. Do NOT create new objects.
@@ -911,7 +912,10 @@ Templates are placed at the viewport center, so they are already visible. Do NOT
   }, [updateCachedRect]);
 
   const screenToBoard = (e) => {
-    const rect = cachedRect.current || canvasRef.current?.getBoundingClientRect();
+    // Always call getBoundingClientRect() fresh — never use the cache here.
+    // The cache drifts if the layout shifts (header load, window resize lag, etc.)
+    // and causes the persistent "drawing 2 inches above cursor" offset.
+    const rect = canvasRef.current?.getBoundingClientRect();
     if (!rect) return null;
     return { x: (e.clientX - rect.left - viewportOffset.x) / zoom, y: (e.clientY - rect.top - viewportOffset.y) / zoom };
   };
@@ -925,7 +929,8 @@ Templates are placed at the viewport center, so they are already visible. Do NOT
 
   // --- Mouse handlers ---
   const handleMouseDown = (e, objId = null) => {
-    if (e.button === 1 || (e.button === 0 && e.shiftKey) || (e.button === 0 && activeTool === 'hand')) {
+    // Pan: middle-click, shift+left, or hand tool on empty canvas (not on an object)
+    if (e.button === 1 || (e.button === 0 && e.shiftKey) || (e.button === 0 && activeTool === 'hand' && !objId)) {
       setIsPanning(true);
       setPanStart({ x: e.clientX - viewportOffset.x, y: e.clientY - viewportOffset.y });
       e.preventDefault();
@@ -1150,15 +1155,17 @@ Templates are placed at the viewport center, so they are already visible. Do NOT
       setSelectionBox(null);
     }
     if (isErasing) setIsErasing(false);
-    if (isDrawing && activeTool === 'pen' && currentPath.length > 1) {
-      setBoardObjects(prev => [...prev, { id: nextId.current++, type: 'path', points: currentPath, color: drawColor, strokeWidth }]);
-      setIsDrawing(false); setCurrentPath([]); setActiveTool('select');
+    if (isDrawing && activeTool === 'pen') {
+      if (currentPath.length > 1) {
+        setBoardObjects(prev => [...prev, { id: nextId.current++, type: 'path', points: currentPath, color: drawColor, strokeWidth }]);
+      }
+      setIsDrawing(false); setCurrentPath([]);
     }
     if (lineStart && (activeTool === 'line' || activeTool === 'arrow')) {
       const pt = screenToBoard(e);
       if (pt) {
         setBoardObjects(prev => [...prev, { id: nextId.current++, type: activeTool, x1: lineStart.x, y1: lineStart.y, x2: pt.x, y2: pt.y, color: drawColor, strokeWidth }]);
-        setLineStart(null); setLineEnd(null); setActiveTool('select');
+        setLineStart(null); setLineEnd(null);
       }
     }
     if (lineStart && (activeTool === 'shape' || activeTool === 'frame')) {
@@ -1183,7 +1190,7 @@ Templates are placed at the viewport center, so they are already visible. Do NOT
           };
           setBoardObjects(prev => [...prev, n]);
         }
-        setLineStart(null); setLineEnd(null); setActiveTool('select');
+        setLineStart(null); setLineEnd(null);
       }
     }
     if (connectingFrom) {
@@ -1462,7 +1469,7 @@ Templates are placed at the viewport center, so they are already visible. Do NOT
           style={{
             width: '100%', height: '100%', position: 'absolute', top: 0, left: 0, overflow: 'hidden',
             cursor: isPanning ? 'grabbing' : isRotating ? 'grabbing' : draggedId ? 'grabbing' : activeTool === 'hand' ? 'grab' : activeTool === 'select' ? 'default' : activeTool === 'eraser' ? 'none' : 'crosshair',
-            background: `radial-gradient(circle, ${darkMode ? 'rgba(200,220,255,0.25)' : 'rgba(0,0,0,0.15)'} 1px, ${theme.canvasBg} 1px)`,
+            background: zoom < 0.25 ? theme.canvasBg : `radial-gradient(circle, ${darkMode ? `rgba(200,220,255,${Math.min(0.25, 0.25 * zoom * 3)})` : `rgba(0,0,0,${Math.min(0.15, 0.15 * zoom * 3)})`} 1px, ${theme.canvasBg} 1px)`,
             backgroundSize: `${24 * zoom}px ${24 * zoom}px`,
             backgroundPosition: `${viewportOffset.x}px ${viewportOffset.y}px`,
           }}
