@@ -12,7 +12,6 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@langchain/community": "^1.1.16",
     "@langchain/core": "^1.1.26",
     "@supabase/supabase-js": "^2.95.3",
     "cors": "^2.8.6",
