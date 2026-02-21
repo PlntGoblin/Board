@@ -2,9 +2,16 @@ import { memo, useState as useLocalState, useEffect, useRef } from 'react';
 import {
   MousePointer, Hand, Pen, Eraser, Type, ArrowRight, Minus,
   StickyNote, Shapes, Square, Circle, Triangle, Diamond, Hexagon, Star,
-  Frame, MessageSquare, Share2,
+  Frame, MessageSquare, Smile,
   Undo, Redo, Trash2,
 } from 'lucide-react';
+
+const EMOJI_PICKER = [
+  '😀', '😂', '🔥', '❤️', '👍', '⭐',
+  '🎯', '💡', '🚀', '✅', '❌', '⚡',
+  '🎉', '💎', '🏆', '📌', '🔑', '💬',
+  '👀', '🤔', '😎', '🙌', '💪', '🎨',
+];
 
 const TOOLS = [
   { id: 'select', icon: MousePointer, label: 'Select' },
@@ -14,7 +21,6 @@ const TOOLS = [
   { id: 'text', icon: Type, label: 'Text' },
   { id: 'arrow', icon: ArrowRight, label: 'Arrow' },
   { id: 'line', icon: Minus, label: 'Line' },
-  { id: 'connector', icon: Share2, label: 'Connector' },
 ];
 
 const STICKY_PICKER = [
@@ -35,21 +41,9 @@ const SHAPE_PICKER = [
   { id: 'star', icon: Star, label: 'Star' },
 ];
 
-function ToolButton({ isActive, onClick, title, icon: Icon, theme, size = 20, bg, color }) {
+function ToolButton({ isActive, onClick, title, icon: Icon, theme, size = 16, bg, color }) {
   const [hovered, setHovered] = useLocalState(false);
-  const [showTooltip, setShowTooltip] = useLocalState(false);
-  const timerRef = useRef(null);
   const btnRef = useRef(null);
-
-  useEffect(() => {
-    if (hovered && title) {
-      timerRef.current = setTimeout(() => setShowTooltip(true), 1000);
-    } else {
-      clearTimeout(timerRef.current);
-      setShowTooltip(false);
-    }
-    return () => clearTimeout(timerRef.current);
-  }, [hovered, title]);
 
   const getTooltipPos = () => {
     if (!btnRef.current) return {};
@@ -62,7 +56,7 @@ function ToolButton({ isActive, onClick, title, icon: Icon, theme, size = 20, bg
       ref={btnRef}
       onClick={onClick}
       style={{
-        width: '44px', height: '44px', border: 'none', borderRadius: '8px',
+        width: '34px', height: '34px', border: 'none', borderRadius: '8px',
         background: bg || (isActive ? '#2196F3' : 'transparent'),
         color: color || (isActive ? 'white' : theme.textSecondary),
         cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -72,15 +66,13 @@ function ToolButton({ isActive, onClick, title, icon: Icon, theme, size = 20, bg
       onMouseLeave={(e) => { setHovered(false); if (!isActive) e.currentTarget.style.background = bg || (isActive ? '#2196F3' : 'transparent'); }}
     >
       <Icon size={size} />
-      {showTooltip && title && (
+      {hovered && title && (
         <div style={{
           ...getTooltipPos(),
-          background: '#1e293b', color: '#f0f0f5', padding: '6px 10px',
-          borderRadius: '6px', fontSize: '12px', fontWeight: '500',
+          background: '#1e293b', color: '#f0f0f5', padding: '5px 10px',
+          borderRadius: '6px', fontSize: '11px', fontWeight: '500',
           whiteSpace: 'nowrap', pointerEvents: 'none', zIndex: 99999,
-          boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
-          opacity: 1,
-          animation: 'tooltipFadeIn 0.3s ease',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
         }}>
           {title}
         </div>
@@ -129,7 +121,9 @@ function PickerButton({ activeTool, toolId, icon, label, showMenu, onToggle, the
 export default memo(function Toolbar({
   activeTool, setActiveTool,
   showStickyMenu, setShowStickyMenu, showShapeMenu, setShowShapeMenu,
+  showEmojiMenu, setShowEmojiMenu,
   stickyColor, setStickyColor, shapeType, setShapeType,
+  selectedEmoji, setSelectedEmoji,
   selectedId, selectedIds,
   handleDelete,
   handleUndo, handleRedo, canUndo, canRedo,
@@ -148,13 +142,13 @@ export default memo(function Toolbar({
       <div style={{
         background: theme.surface, borderRadius: '12px',
         boxShadow: darkMode ? '0 4px 12px rgba(0,0,0,0.4)' : '0 4px 12px rgba(0,0,0,0.15)',
-        display: 'flex', flexDirection: 'column', padding: '8px', gap: '4px', alignItems: 'center',
+        display: 'flex', flexDirection: 'column', padding: '6px', gap: '2px', alignItems: 'center',
       }}>
         {TOOLS.map(tool => (
           <ToolButton
             key={tool.id}
             isActive={activeTool === tool.id}
-            onClick={() => { setActiveTool(tool.id); setShowStickyMenu(false); setShowShapeMenu(false); }}
+            onClick={() => { setActiveTool(tool.id); setShowStickyMenu(false); setShowShapeMenu(false); setShowEmojiMenu(false); }}
             title={tool.label}
             icon={tool.icon}
             theme={theme}
@@ -168,7 +162,7 @@ export default memo(function Toolbar({
           icon={StickyNote}
           label="Sticky Note"
           showMenu={showStickyMenu}
-          onToggle={() => { setActiveTool('sticky'); setShowStickyMenu(!showStickyMenu); setShowShapeMenu(false); }}
+          onToggle={() => { setActiveTool('sticky'); setShowStickyMenu(!showStickyMenu); setShowShapeMenu(false); setShowEmojiMenu(false); }}
           theme={theme}
           darkMode={darkMode}
         >
@@ -197,7 +191,7 @@ export default memo(function Toolbar({
           icon={Shapes}
           label="Shapes"
           showMenu={showShapeMenu}
-          onToggle={() => { setActiveTool('shape'); setShowShapeMenu(!showShapeMenu); setShowStickyMenu(false); }}
+          onToggle={() => { setActiveTool('shape'); setShowShapeMenu(!showShapeMenu); setShowStickyMenu(false); setShowEmojiMenu(false); }}
           theme={theme}
           darkMode={darkMode}
         >
@@ -232,16 +226,48 @@ export default memo(function Toolbar({
         {/* Frame tool */}
         <ToolButton
           isActive={activeTool === 'frame'}
-          onClick={() => { setActiveTool('frame'); setShowStickyMenu(false); setShowShapeMenu(false); }}
+          onClick={() => { setActiveTool('frame'); setShowStickyMenu(false); setShowShapeMenu(false); setShowEmojiMenu(false); }}
           title="Frame"
           icon={Frame}
           theme={theme}
         />
 
+        {/* Emoji sticker with picker */}
+        <PickerButton
+          activeTool={activeTool}
+          toolId="emoji"
+          icon={Smile}
+          label="Sticker"
+          showMenu={showEmojiMenu}
+          onToggle={() => { setActiveTool('emoji'); setShowEmojiMenu(!showEmojiMenu); setShowStickyMenu(false); setShowShapeMenu(false); }}
+          theme={theme}
+          darkMode={darkMode}
+        >
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '2px' }}>
+            {EMOJI_PICKER.map(e => (
+              <button
+                key={e}
+                onClick={() => { setSelectedEmoji(e); setShowEmojiMenu(false); }}
+                style={{
+                  width: '30px', height: '30px', border: 'none', borderRadius: '6px',
+                  background: selectedEmoji === e ? (darkMode ? 'rgba(33,150,243,0.15)' : '#e3f2fd') : 'transparent',
+                  cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: '18px', transition: 'all 0.15s',
+                  transform: selectedEmoji === e ? 'scale(1.2)' : 'scale(1)',
+                }}
+                onMouseEnter={(ev) => { ev.currentTarget.style.background = selectedEmoji === e ? (darkMode ? 'rgba(33,150,243,0.15)' : '#e3f2fd') : theme.surfaceHover; }}
+                onMouseLeave={(ev) => { ev.currentTarget.style.background = selectedEmoji === e ? (darkMode ? 'rgba(33,150,243,0.15)' : '#e3f2fd') : 'transparent'; }}
+              >
+                {e}
+              </button>
+            ))}
+          </div>
+        </PickerButton>
+
         {/* Comment tool */}
         <ToolButton
           isActive={activeTool === 'comment'}
-          onClick={() => { setActiveTool('comment'); setShowStickyMenu(false); setShowShapeMenu(false); }}
+          onClick={() => { setActiveTool('comment'); setShowStickyMenu(false); setShowShapeMenu(false); setShowEmojiMenu(false); }}
           title="Comment"
           icon={MessageSquare}
           theme={theme}
@@ -268,7 +294,7 @@ export default memo(function Toolbar({
       <div style={{
         background: theme.surface, borderRadius: '10px',
         boxShadow: darkMode ? '0 4px 12px rgba(0,0,0,0.4)' : '0 4px 12px rgba(0,0,0,0.15)',
-        display: 'flex', flexDirection: 'column', padding: '6px', gap: '4px', alignItems: 'center',
+        display: 'flex', flexDirection: 'column', padding: '4px', gap: '2px', alignItems: 'center',
       }}>
         {[
           { action: handleUndo, icon: Undo, label: 'Undo (⌘Z)', enabled: canUndo },

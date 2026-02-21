@@ -1,4 +1,5 @@
 export function getDisplayName(user) {
+  if (user?.is_anonymous) return 'Guest';
   return user?.user_metadata?.display_name || user?.email?.split('@')[0] || 'User';
 }
 

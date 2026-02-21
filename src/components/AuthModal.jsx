@@ -21,7 +21,7 @@ const FEATURES = [
 ];
 
 export default function AuthModal({ redirectTo }) {
-  const { signIn, signUp, signInWithGoogle, resetPassword } = useAuth();
+  const { signIn, signUp, signInWithGoogle, signInAsGuest, resetPassword } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -635,6 +635,58 @@ export default function AuthModal({ redirectTo }) {
                     <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
                   </svg>
                   Continue with Google
+                </button>
+
+                {/* Guest divider */}
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: '12px',
+                  margin: '18px 0',
+                }}>
+                  <div style={{ flex: 1, height: '1px', background: 'rgba(255,255,255,0.07)' }} />
+                  <span style={{ fontSize: '12px', color: '#475569' }}>or just explore</span>
+                  <div style={{ flex: 1, height: '1px', background: 'rgba(255,255,255,0.07)' }} />
+                </div>
+
+                {/* Try as Guest */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setError('');
+                    setLoading(true);
+                    localStorage.setItem('keepLoggedIn', 'false');
+                    signInAsGuest()
+                      .catch((err) => { setError(err.message); })
+                      .finally(() => setLoading(false));
+                  }}
+                  disabled={loading}
+                  style={{
+                    width: '100%',
+                    padding: '11px',
+                    background: 'none',
+                    border: '1px dashed rgba(255,255,255,0.15)',
+                    borderRadius: '10px',
+                    fontSize: '14px',
+                    fontWeight: '500',
+                    color: '#64748b',
+                    cursor: loading ? 'not-allowed' : 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '8px',
+                    transition: 'all 0.2s',
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!loading) {
+                      e.currentTarget.style.borderColor = 'rgba(56,189,248,0.4)';
+                      e.currentTarget.style.color = '#94a3b8';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.borderColor = 'rgba(255,255,255,0.15)';
+                    e.currentTarget.style.color = '#64748b';
+                  }}
+                >
+                  Try as Guest — no signup needed
                 </button>
               </form>
             )}

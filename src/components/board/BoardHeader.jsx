@@ -1,10 +1,11 @@
-import { ArrowLeft, Cloud, CloudOff, Loader, Share2, Trash2 } from 'lucide-react';
+import { ArrowLeft, Cloud, CloudOff, Loader, Share2, Trash2, UserPlus } from 'lucide-react';
 import PresenceBar from '../PresenceBar';
 
 export default function BoardHeader({
   boardTitle, setBoardTitle, saveBoard, boardId, saveStatus,
   onlineUsers, user,
   onClear, hasBoardObjects, onShare, navigate, theme,
+  isGuest, onSignUp,
 }) {
   return (
     <div style={{
@@ -43,15 +44,17 @@ export default function BoardHeader({
         onBlurCapture={(e) => e.target.style.background = 'transparent'}
       />
 
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px',
-        color: saveStatus === 'saved' ? '#4caf50' : saveStatus === 'saving' ? '#ff9800' : saveStatus === 'error' ? '#f44336' : theme.textMuted,
-      }}>
-        {saveStatus === 'saved' && <><Cloud size={14} /> Saved</>}
-        {saveStatus === 'saving' && <><Loader size={14} /> Saving...</>}
-        {saveStatus === 'unsaved' && <><CloudOff size={14} /> Unsaved</>}
-        {saveStatus === 'error' && <><CloudOff size={14} /> Save failed</>}
-      </div>
+      {!isGuest && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px',
+          color: saveStatus === 'saved' ? '#4caf50' : saveStatus === 'saving' ? '#ff9800' : saveStatus === 'error' ? '#f44336' : theme.textMuted,
+        }}>
+          {saveStatus === 'saved' && <Cloud size={14} />}
+          {saveStatus === 'saving' && <Loader size={14} style={{ animation: 'spin 1s linear infinite' }} />}
+          {saveStatus === 'unsaved' && <CloudOff size={14} />}
+          {saveStatus === 'error' && <CloudOff size={14} />}
+        </div>
+      )}
 
       <div style={{ flex: 1 }} />
 
@@ -73,19 +76,35 @@ export default function BoardHeader({
         </button>
       )}
 
-      <button
-        onClick={onShare}
-        style={{
-          display: 'flex', alignItems: 'center', gap: '6px',
-          padding: '8px 14px',
-          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-          color: 'white', border: 'none', borderRadius: '6px',
-          cursor: 'pointer', fontSize: '13px', fontWeight: '600',
-        }}
-      >
-        <Share2 size={14} />
-        Share
-      </button>
+      {isGuest ? (
+        <button
+          onClick={onSignUp}
+          style={{
+            display: 'flex', alignItems: 'center', gap: '6px',
+            padding: '8px 14px',
+            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+            color: 'white', border: 'none', borderRadius: '6px',
+            cursor: 'pointer', fontSize: '13px', fontWeight: '600',
+          }}
+        >
+          <UserPlus size={14} />
+          Sign Up
+        </button>
+      ) : (
+        <button
+          onClick={onShare}
+          style={{
+            display: 'flex', alignItems: 'center', gap: '6px',
+            padding: '8px 14px',
+            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+            color: 'white', border: 'none', borderRadius: '6px',
+            cursor: 'pointer', fontSize: '13px', fontWeight: '600',
+          }}
+        >
+          <Share2 size={14} />
+          Share
+        </button>
+      )}
     </div>
   );
 }

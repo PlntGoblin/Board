@@ -100,6 +100,16 @@ export function AuthProvider({ children }) {
     if (error) throw error;
   };
 
+  const signInAsGuest = async () => {
+    const { data, error } = await supabase.auth.signInAnonymously();
+    if (error) throw error;
+    if (data.session) {
+      setSession(data.session);
+      setUser(data.session.user);
+    }
+    return data;
+  };
+
   const signOut = async () => {
     const { error } = await supabase.auth.signOut();
     if (error) throw error;
@@ -115,7 +125,7 @@ export function AuthProvider({ children }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, session, loading, signUp, signIn, signInWithGoogle, signOut, resetPassword, updateAvatar }}>
+    <AuthContext.Provider value={{ user, session, loading, isGuest: user?.is_anonymous === true, signUp, signIn, signInWithGoogle, signInAsGuest, signOut, resetPassword, updateAvatar }}>
       {children}
     </AuthContext.Provider>
   );

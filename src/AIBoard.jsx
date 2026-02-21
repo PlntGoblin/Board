@@ -14,18 +14,30 @@ import ZoomControls from './components/board/ZoomControls';
 import DrawingPanel from './components/board/DrawingPanel';
 import Confetti from './components/board/Confetti';
 import BoardObject from './components/board/BoardObject';
+import ContextMenu from './components/board/ContextMenu';
 import { API_URL, ZOOM_MIN, ZOOM_MAX, HISTORY_MAX_DEPTH, CULL_MARGIN } from './lib/config';
 import { darkTheme } from './lib/theme';
 import { pointToSegmentDist, getObjBounds, boxesIntersect, getAnchorPoint, getAnchorNames, getNearestAnchor, getConnectorEndpoints, computeCurvedConnectorPath } from './lib/geometry';
 import { openaiToolSchemas } from './lib/boardTools';
-import { getUserAvatar } from './lib/utils';
+import { getUserAvatar, getDisplayName } from './lib/utils';
 
 const ERASER_THRESHOLD = 12;
+
+const SPACE_NICKNAMES = ['space ranger', 'star pilot', 'cosmic explorer', 'galaxy navigator', 'orbit captain', 'nebula voyager'];
+const getSpaceNick = () => SPACE_NICKNAMES[Math.floor(Math.random() * SPACE_NICKNAMES.length)];
+
+const QUICK_PROMPTS = [
+  { label: 'Brainstorm ideas', followUp: () => `What topic would you like to brainstorm about, ${getSpaceNick()}?`, prefix: 'Brainstorm ideas about ' },
+  { label: 'SWOT analysis', followUp: () => `What would you like to do a SWOT analysis on, ${getSpaceNick()}?`, prefix: 'Create a SWOT analysis for ' },
+  { label: 'User journey map', followUp: () => `What product or experience should the journey map cover, ${getSpaceNick()}?`, prefix: 'Create a user journey map for ' },
+  { label: 'Kanban board', followUp: () => `What project is the Kanban board for, ${getSpaceNick()}?`, prefix: 'Create a Kanban board for ' },
+  { label: 'Pros & cons', followUp: () => `What are we weighing the pros and cons of, ${getSpaceNick()}?`, prefix: 'Create a pros and cons list for ' },
+];
 
 const AIBoard = () => {
   const { id: boardId } = useParams();
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, isGuest, signOut } = useAuth();
   const { loadBoard, saveBoard } = useBoard();
   const { onlineUsers, cursors, updateCursor } = usePresence(boardId, user);
 
@@ -45,6 +57,8 @@ const AIBoard = () => {
   const [showShareModal, setShowShareModal] = useState(false);
   const [accessError, setAccessError] = useState(null);
   const darkMode = true;
+  const [clipboard, setClipboard] = useState(null);
+  const [contextMenu, setContextMenu] = useState(null);
 
   // --- Tool state ---
   const [activeTool, setActiveTool] = useState('select');
@@ -58,8 +72,10 @@ const AIBoard = () => {
   const [eraserPos, setEraserPos] = useState(null);
   const [stickyColor, setStickyColor] = useState('yellow');
   const [shapeType, setShapeType] = useState('rectangle');
+  const [selectedEmoji, setSelectedEmoji] = useState('😀');
   const [showStickyMenu, setShowStickyMenu] = useState(false);
   const [showShapeMenu, setShowShapeMenu] = useState(false);
+  const [showEmojiMenu, setShowEmojiMenu] = useState(false);
 
   // --- Connector state ---
   const [connectingFrom, setConnectingFrom] = useState(null); // { objId }
@@ -90,6 +106,8 @@ const AIBoard = () => {
   // --- UI state ---
   const [showZoomMenu, setShowZoomMenu] = useState(false);
   const [showConfetti, setShowConfetti] = useState(false);
+  const [showWelcome, setShowWelcome] = useState(true);
+  const [quickPromptPrefix, setQuickPromptPrefix] = useState(null);
 
   // --- Refs ---
   const canvasRef = useRef(null);
@@ -100,6 +118,7 @@ const AIBoard = () => {
   const rafId = useRef(null);
   const rotationStartRef = useRef(null);
   const innerDivRef = useRef(null);
+  const recentStickyRects = useRef([]);
 
   // --- Theme ---
   const theme = darkTheme;
@@ -337,11 +356,34 @@ const AIBoard = () => {
   const zoomOut = useCallback(() => setZoom(prev => Math.max(+(prev / 1.25).toFixed(2), ZOOM_MIN)), []);
   const fitToScreen = useCallback(() => { setZoom(1); setViewportOffset({ x: 0, y: 0 }); }, []);
 
+  // --- Guest sign-up handler ---
+  const handleGuestSignUp = useCallback(async () => {
+    await signOut();
+    navigate('/');
+  }, [signOut, navigate]);
+
   // --- AI tool execution ---
   const executeToolCall = useCallback(async (toolName, toolInput) => {
     switch (toolName) {
       case "createStickyNote": {
-        const n = { id: nextId.current++, type: 'stickyNote', x: toolInput.x, y: toolInput.y, width: 200, height: 200, color: toolInput.color, text: toolInput.text };
+        let nx = toolInput.x, ny = toolInput.y;
+        const sw = 200, sh = 200, gap = 20;
+        // Collect all existing sticky note rects + recently placed ones this AI response
+        const allRects = [
+          ...boardObjects.filter(o => o.type === 'stickyNote').map(o => ({ x: o.x, y: o.y, w: o.width || 200, h: o.height || 200 })),
+          ...recentStickyRects.current,
+        ];
+        const overlaps = (tx, ty) => allRects.some(r =>
+          tx < r.x + r.w + gap && tx + sw + gap > r.x &&
+          ty < r.y + r.h + gap && ty + sh + gap > r.y
+        );
+        const startX = nx;
+        while (overlaps(nx, ny)) {
+          nx += sw + gap;
+          if (nx > startX + 5 * (sw + gap)) { nx = startX; ny += sh + gap; }
+        }
+        recentStickyRects.current.push({ x: nx, y: ny, w: sw, h: sh });
+        const n = { id: nextId.current++, type: 'stickyNote', x: nx, y: ny, width: sw, height: sh, color: toolInput.color, text: toolInput.text };
         setBoardObjects(prev => [...prev, n]);
         return { success: true, objectId: n.id };
       }
@@ -428,7 +470,7 @@ const AIBoard = () => {
         return { count: matches.length, objects: matches.map(o => ({ id: o.id, type: o.type, ...(o.text ? { text: o.text.slice(0, 40) } : {}), ...(o.title ? { title: o.title.slice(0, 40) } : {}), ...(o.color ? { color: o.color } : {}), x: Math.round(o.x), y: Math.round(o.y) })) };
       }
       case "getBoardState":
-        return { objects: boardObjects.map(({ id, type, x, y, width, height, color, text, title, shapeType, x1, y1, x2, y2, fromId, toId }) => ({ id, type, x, y, width, height, color, text, title, shapeType, ...(x1 !== undefined ? { x1, y1, x2, y2 } : {}), ...(fromId !== undefined ? { fromId, toId } : {}) })) };
+        return { objects: boardObjects.map(({ id, type, x, y, width, height, color, text, title, shapeType, emoji, rotation, x1, y1, x2, y2, fromId, toId }) => ({ id, type, x, y, width, height, color, text, title, shapeType, ...(emoji ? { emoji } : {}), ...(rotation ? { rotation } : {}), ...(x1 !== undefined ? { x1, y1, x2, y2 } : {}), ...(fromId !== undefined ? { fromId, toId } : {}) })) };
       case "zoomToFit": {
         const targets = toolInput.objectIds?.length
           ? boardObjects.filter(obj => toolInput.objectIds.includes(obj.id))
@@ -714,6 +756,7 @@ const AIBoard = () => {
       parts.push(`pos:(${Math.round(o.x)},${Math.round(o.y)})`);
       if (o.width) parts.push(`size:${Math.round(o.width)}x${Math.round(o.height)}`);
       if (o.color) parts.push(`color:${o.color}`);
+      if (o.emoji) parts.push(`emoji:${o.emoji}`);
       return `[${parts.join(', ')}]`;
     }).join('\n');
     const extra = boardObjects.length > 50 ? `\n...and ${boardObjects.length - 50} more objects (call getBoardState for full list)` : '';
@@ -756,24 +799,39 @@ Rules:
 - Be creative and helpful.
 
 Templates — ALWAYS use the createTemplate tool for any of these. Never build them manually with individual createFrame/createStickyNote calls. It's instant.
-- SWOT analysis → createTemplate({ templateType: "swot", topic: "<user's topic>" })
-- User journey map → createTemplate({ templateType: "userJourney", topic: "<user's topic>" })
-- Retrospective board → createTemplate({ templateType: "retrospective", topic: "<user's topic>" })
+- SWOT analysis / four quadrants → createTemplate({ templateType: "swot", topic: "<user's topic>" })
+- User journey map / 5 stages → createTemplate({ templateType: "userJourney", topic: "<user's topic>" })
+- Retrospective board / What Went Well + What Didn't + Action Items → createTemplate({ templateType: "retrospective", topic: "<user's topic>" })
 - Kanban board → createTemplate({ templateType: "kanban", topic: "<user's topic>" })
-- Pro/con grid → createTemplate({ templateType: "proCon", topic: "<user's topic>" })
-The topic is optional — omit it if not specified. The template is placed automatically. Do NOT call zoomToFit after createTemplate.`,
+- Pro/con grid / "2x3 grid for pros and cons" → createTemplate({ templateType: "proCon", topic: "<user's topic>" })
+The topic is optional — omit it if not specified. The template is placed automatically. Do NOT call zoomToFit after createTemplate.
+
+Quick command routing — follow these patterns for speed:
+- "Add a [color] sticky note that says [text]" → ONE createStickyNote call. Position at (sx, sy).
+- "Create a [color] [shape] at position X, Y" → ONE createShape call with the given x, y.
+- "Add a frame called [title]" → ONE createFrame call. Position at (sx, sy).
+- "Change the [object] color to [color]" → Find the object ID from board state above, then ONE changeColor call.
+- "Move all the [color] sticky notes to the right side" → Use board state above to find matching objects. Issue ALL moveObject calls in ONE response. "Right side" = x position of rightmost object + 250.
+- "Resize the frame to fit its contents" → Find the frame and objects inside it from board state. Calculate bounding box, add 20px padding, then ONE resizeObject call.
+- "Arrange these sticky notes in a grid" → Use selectedIds above. ONE arrangeGrid call.
+- "Create a 2x3 grid of sticky notes for [topic]" → Use createTemplate if it matches a known template (proCon = 2-column grid). Otherwise create 6 stickies in a grid layout — ALL in ONE response.
+- "Space these elements evenly" → Use selectedIds above. ONE distributeObjects call (pick horizontal or vertical based on layout).
+CRITICAL: Always batch ALL tool calls in ONE response. Never split across multiple replies. Never call findObjects or getBoardState when the board state is already provided above.`,
   };
 
   const processAICommand = async () => {
     if (!aiInput.trim() || isProcessing) return;
     setIsProcessing(true);
     setAiResponse('');
-    const userMessage = { role: "user", content: aiInput };
+    const fullInput = quickPromptPrefix ? quickPromptPrefix + aiInput : aiInput;
+    const userMessage = { role: "user", content: fullInput };
     setAiInput('');
+    setQuickPromptPrefix(null);
     const newHistory = [...conversationHistory, userMessage];
     setConversationHistory(newHistory);
     // Track bounds of newly created objects directly from tool inputs (no state read needed)
     const createdBounds = [];
+    recentStickyRects.current = [];
     const CREATION_TOOLS_AI = new Set(['createStickyNote', 'createShape', 'createFrame', 'createText', 'createTemplate']);
 
     try {
@@ -997,7 +1055,7 @@ The topic is optional — omit it if not specified. The template is placed autom
 
       // Connector drag: runs whenever actively dragging from an anchor (any tool)
       if (connectingFrom && pt) {
-        const CONNECTABLE = ['stickyNote', 'shape', 'text', 'frame', 'comment'];
+        const CONNECTABLE = ['stickyNote', 'shape', 'text', 'frame', 'comment', 'emoji'];
         const CONN_PAD = 25;
         const underCursor = boardObjects.find(o => {
           if (!CONNECTABLE.includes(o.type)) return false;
@@ -1022,7 +1080,7 @@ The topic is optional — omit it if not specified. The template is placed autom
       }
       // Connector tool hover detection (no active drag)
       if (activeTool === 'connector' && pt) {
-        const CONNECTABLE = ['stickyNote', 'shape', 'text', 'frame', 'comment'];
+        const CONNECTABLE = ['stickyNote', 'shape', 'text', 'frame', 'comment', 'emoji'];
         const CONN_PAD = 25;
         const underCursor = boardObjects.find(o => {
           if (!CONNECTABLE.includes(o.type)) return false;
@@ -1208,7 +1266,7 @@ The topic is optional — omit it if not specified. The template is placed autom
     if (connectingFrom) {
       const pt = screenToBoard(e);
       if (pt) {
-        const CONNECTABLE = ['stickyNote', 'shape', 'text', 'frame', 'comment'];
+        const CONNECTABLE = ['stickyNote', 'shape', 'text', 'frame', 'comment', 'emoji'];
         const CONN_PAD = 25;
         const targetObj = boardObjects.find(o => {
           if (o.id === connectingFrom.objId || !CONNECTABLE.includes(o.type)) return false;
@@ -1302,18 +1360,86 @@ The topic is optional — omit it if not specified. The template is placed autom
     });
   }, [selectedId]);
 
+  // --- Clipboard: Copy / Paste / Cut / Duplicate ---
+  const handleCopy = useCallback(() => {
+    const ids = selectedIds.length > 0 ? selectedIds : selectedId ? [selectedId] : [];
+    if (ids.length === 0) return;
+    const objs = boardObjects.filter(o => ids.includes(o.id));
+    if (objs.length === 0) return;
+    // Store with relative positions (offset from first object)
+    const baseX = Math.min(...objs.map(o => o.x ?? o.x1 ?? 0));
+    const baseY = Math.min(...objs.map(o => o.y ?? o.y1 ?? 0));
+    setClipboard(objs.map(o => {
+      const clone = { ...o };
+      delete clone.id;
+      if (clone.x != null) { clone._rx = clone.x - baseX; clone._ry = clone.y - baseY; }
+      else if (clone.x1 != null) { clone._rx = clone.x1 - baseX; clone._ry = clone.y1 - baseY; clone._rx2 = clone.x2 - baseX; clone._ry2 = clone.y2 - baseY; }
+      if (clone.points) { clone._rpts = clone.points.map(p => ({ x: p.x - baseX, y: p.y - baseY })); }
+      return clone;
+    }));
+  }, [selectedId, selectedIds, boardObjects]);
+
+  const handlePaste = useCallback((px, py) => {
+    if (!clipboard || clipboard.length === 0) return;
+    // Default paste position: center of viewport
+    const pasteX = px ?? ((-viewportOffset.x + window.innerWidth / 2) / zoom);
+    const pasteY = py ?? ((-viewportOffset.y + window.innerHeight / 2) / zoom);
+    const idMap = {};
+    const newObjs = clipboard.map(c => {
+      const newId = nextId.current++;
+      if (c.id) idMap[c.id] = newId; // won't exist since we stripped, but safety
+      const obj = { ...c, id: newId };
+      if (obj._rx != null) { obj.x = pasteX + obj._rx; obj.y = pasteY + obj._ry; }
+      if (obj._rx2 != null) { obj.x1 = pasteX + obj._rx; obj.y1 = pasteY + obj._ry; obj.x2 = pasteX + obj._rx2; obj.y2 = pasteY + obj._ry2; }
+      if (obj._rpts) { obj.points = obj._rpts.map(p => ({ x: pasteX + p.x, y: pasteY + p.y })); }
+      delete obj._rx; delete obj._ry; delete obj._rx2; delete obj._ry2; delete obj._rpts;
+      return obj;
+    });
+    setBoardObjects(prev => [...prev, ...newObjs]);
+    setSelectedIds(newObjs.map(o => o.id));
+    setSelectedId(newObjs.length === 1 ? newObjs[0].id : null);
+  }, [clipboard, viewportOffset, zoom]);
+
+  const handleCut = useCallback(() => {
+    handleCopy();
+    handleDelete();
+  }, [handleCopy, handleDelete]);
+
+  const handleDuplicate = useCallback(() => {
+    const ids = selectedIds.length > 0 ? selectedIds : selectedId ? [selectedId] : [];
+    if (ids.length === 0) return;
+    const objs = boardObjects.filter(o => ids.includes(o.id));
+    const newObjs = objs.map(o => {
+      const newId = nextId.current++;
+      const clone = { ...o, id: newId };
+      if (clone.x != null) { clone.x += 20; clone.y += 20; }
+      if (clone.x1 != null) { clone.x1 += 20; clone.y1 += 20; clone.x2 += 20; clone.y2 += 20; }
+      if (clone.points) { clone.points = clone.points.map(p => ({ x: p.x + 20, y: p.y + 20 })); }
+      return clone;
+    });
+    setBoardObjects(prev => [...prev, ...newObjs]);
+    setSelectedIds(newObjs.map(o => o.id));
+    setSelectedId(newObjs.length === 1 ? newObjs[0].id : null);
+  }, [selectedId, selectedIds, boardObjects]);
+
   // --- Keyboard shortcuts ---
   useEffect(() => {
     const handler = (e) => {
       const tag = e.target.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+      if (e.target.isContentEditable) return;
+      if (e.key === 'Escape') { setContextMenu(null); return; }
       if ((e.key === 'Delete' || e.key === 'Backspace') && (selectedId || selectedIds.length > 0)) { e.preventDefault(); handleDelete(); }
       if ((e.metaKey || e.ctrlKey) && e.key === 'z' && !e.shiftKey) { e.preventDefault(); handleUndo(); }
       if ((e.metaKey || e.ctrlKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) { e.preventDefault(); handleRedo(); }
+      if ((e.metaKey || e.ctrlKey) && e.key === 'c') { e.preventDefault(); handleCopy(); }
+      if ((e.metaKey || e.ctrlKey) && e.key === 'v') { e.preventDefault(); handlePaste(); }
+      if ((e.metaKey || e.ctrlKey) && e.key === 'x') { e.preventDefault(); handleCut(); }
+      if ((e.metaKey || e.ctrlKey) && e.key === 'd') { e.preventDefault(); handleDuplicate(); }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [selectedId, selectedIds, handleDelete, handleUndo, handleRedo]);
+  }, [selectedId, selectedIds, handleDelete, handleUndo, handleRedo, handleCopy, handlePaste, handleCut, handleDuplicate]);
 
   // --- Wheel listener (non-passive) ---
   const canvasRefCallback = useCallback((el) => {
@@ -1357,11 +1483,26 @@ The topic is optional — omit it if not specified. The template is placed autom
     }
   }, []);
 
+  // --- Context menu ---
+  const handleContextMenu = (e, objId) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (objId) {
+      // Select the object if not already selected
+      if (!selectedIds.includes(objId) && selectedId !== objId) {
+        setSelectedId(objId);
+        setSelectedIds([objId]);
+      }
+    }
+    setContextMenu({ x: e.clientX, y: e.clientY, objId: objId || null });
+  };
+
   // --- Canvas click (place objects) ---
   const handleCanvasClick = (e) => {
     setShowStickyMenu(false);
     setShowShapeMenu(false);
     if (activeTool === 'select' || activeTool === 'hand' || activeTool === 'pen' || activeTool === 'eraser' || activeTool === 'arrow' || activeTool === 'line' || activeTool === 'shape' || activeTool === 'frame' || isPanning) return;
+    setShowEmojiMenu(false);
     const pt = screenToBoard(e);
     if (!pt) return;
 
@@ -1378,6 +1519,10 @@ The topic is optional — omit it if not specified. The template is placed autom
       const n = { id: nextId.current++, type: 'comment', x: pt.x, y: pt.y, text: '', author: user?.email || 'Anonymous', avatar_emoji: av.emoji, avatar_color: av.color, timestamp: Date.now() };
       setBoardObjects(prev => [...prev, n]);
       setEditingId(n.id); setEditingText(''); setActiveTool('select');
+    } else if (activeTool === 'emoji') {
+      const n = { id: nextId.current++, type: 'emoji', x: pt.x - 24, y: pt.y - 24, width: 48, height: 48, emoji: selectedEmoji };
+      setBoardObjects(prev => [...prev, n]);
+      setActiveTool('select');
     }
   };
 
@@ -1432,9 +1577,29 @@ The topic is optional — omit it if not specified. The template is placed autom
         onClear={onClear} hasBoardObjects={boardObjects.length > 0}
         onShare={onShare}
         navigate={navigate} theme={theme}
+        isGuest={isGuest} onSignUp={handleGuestSignUp}
       />
 
       {showShareModal && <ShareModal boardId={boardId} isPublic={isBoardPublic} onClose={() => setShowShareModal(false)} />}
+
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x} y={contextMenu.y}
+          hasObject={!!contextMenu.objId}
+          hasClipboard={!!clipboard}
+          onClose={() => setContextMenu(null)}
+          onEdit={() => {
+            if (contextMenu.objId) { setEditingId(contextMenu.objId); setEditingText(boardObjects.find(o => o.id === contextMenu.objId)?.text || ''); }
+          }}
+          onCopy={handleCopy} onPaste={() => {
+            const pt = screenToBoard({ clientX: contextMenu.x, clientY: contextMenu.y });
+            handlePaste(pt?.x, pt?.y);
+          }}
+          onCut={handleCut} onDuplicate={handleDuplicate} onDelete={handleDelete}
+          onBringToFront={bringToFront} onBringForward={bringForward}
+          onSendBackward={sendBackward} onSendToBack={sendToBack}
+        />
+      )}
 
       <AIChat
         showAIChat={showAIChat} setShowAIChat={setShowAIChat}
@@ -1450,8 +1615,10 @@ The topic is optional — omit it if not specified. The template is placed autom
           activeTool={activeTool} setActiveTool={handleToolChange}
           showStickyMenu={showStickyMenu} setShowStickyMenu={setShowStickyMenu}
           showShapeMenu={showShapeMenu} setShowShapeMenu={setShowShapeMenu}
+          showEmojiMenu={showEmojiMenu} setShowEmojiMenu={setShowEmojiMenu}
           stickyColor={stickyColor} setStickyColor={setStickyColor}
           shapeType={shapeType} setShapeType={setShapeType}
+          selectedEmoji={selectedEmoji} setSelectedEmoji={setSelectedEmoji}
           selectedId={selectedId} selectedIds={selectedIds}
           handleDelete={handleDelete}
           bringToFront={bringToFront} bringForward={bringForward}
@@ -1471,11 +1638,179 @@ The topic is optional — omit it if not specified. The template is placed autom
           darkMode={darkMode} theme={theme}
         />
 
+        {/* Welcome prompt for empty boards */}
+        {boardLoaded && boardObjects.length === 0 && showWelcome && !showAIChat && (
+          <div
+            onClick={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+            style={{
+            position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
+            zIndex: 50, pointerEvents: 'auto',
+            background: darkMode ? 'rgba(15,22,38,0.85)' : 'rgba(255,255,255,0.85)',
+            backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)',
+            borderRadius: '20px',
+            border: `1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)'}`,
+            boxShadow: darkMode ? '0 8px 40px rgba(0,0,0,0.6)' : '0 8px 40px rgba(0,0,0,0.15)',
+            padding: '20px 32px', maxWidth: '520px',
+            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px',
+            overflow: 'hidden',
+            animation: 'welcomeFadeIn 0.4s ease-out',
+          }}>
+            {/* Close button */}
+            <button
+              onClick={() => setShowWelcome(false)}
+              style={{
+                position: 'absolute', top: '8px', right: '8px', zIndex: 2,
+                width: '24px', height: '24px', borderRadius: '50%',
+                border: 'none', background: 'transparent',
+                color: theme.textMuted, cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: '16px', lineHeight: 1,
+                transition: 'color 0.2s',
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.color = theme.text}
+              onMouseLeave={(e) => e.currentTarget.style.color = theme.textMuted}
+            >
+              &times;
+            </button>
+            {/* Animated stars & comets background */}
+            <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', borderRadius: '20px', pointerEvents: 'none', zIndex: 0 }}>
+              {/* Stars — same style as login page */}
+              {Array.from({ length: 40 }, (_, i) => {
+                const size = (((i * 7 + 3) % 25) / 10) + 0.5;
+                const opacity = ((i * 13 + 7) % 70) / 100 + 0.3;
+                return (
+                  <div key={`star-${i}`} style={{
+                    position: 'absolute',
+                    left: `${((i * 47 + 13) % 96) + 2}%`,
+                    top: `${((i * 31 + 7) % 94) + 3}%`,
+                    width: `${size}px`,
+                    height: `${size}px`,
+                    borderRadius: '50%',
+                    background: size > 2
+                      ? 'radial-gradient(circle, rgba(220,230,255,0.9), rgba(180,200,255,0.4))'
+                      : 'rgba(200,220,255,0.7)',
+                    boxShadow: size > 1.8 ? `0 0 ${size * 2}px rgba(180,200,255,0.4)` : 'none',
+                    opacity,
+                    animation: `welcomeTwinkle ${((i * 3 + 2) % 30) / 10 + 2}s ${((i * 7) % 50) / 10}s infinite ease-in-out`,
+                  }} />
+                );
+              })}
+              {/* Shooting stars — NW to SE diagonal */}
+              {[0, 1].map(i => (
+                <div key={`comet-${i}`} style={{
+                  position: 'absolute',
+                  top: `${10 + i * 35}%`,
+                  left: `${5 + i * 20}%`,
+                  transform: `rotate(${30 + i * 10}deg)`,
+                }}>
+                  <div style={{
+                    width: `${60 + i * 15}px`, height: '1.5px',
+                    animation: `welcomeShoot ${10 + i * 4}s ${i * 6}s infinite ease-out`,
+                    opacity: 0,
+                  }}>
+                    <div style={{
+                      width: '100%', height: '100%',
+                      background: 'linear-gradient(90deg, transparent, rgba(180,200,255,0.3) 60%, rgba(255,255,255,0.7))',
+                      borderRadius: '1px',
+                    }} />
+                  </div>
+                </div>
+              ))}
+              <style>{`
+                @keyframes welcomeTwinkle {
+                  0%, 100% { opacity: 0.15; transform: scale(0.8); }
+                  50% { opacity: 1; transform: scale(1.2); }
+                }
+                @keyframes welcomeShoot {
+                  0% { opacity: 0; transform: translateX(0); }
+                  1% { opacity: 0.6; transform: translateX(0); }
+                  5% { opacity: 0.6; transform: translateX(130px); }
+                  7% { opacity: 0; transform: translateX(220px); }
+                  100% { opacity: 0; transform: translateX(220px); }
+                }
+                @keyframes welcomeFadeIn {
+                  from { opacity: 0; transform: translate(-50%, -50%) scale(0.95); }
+                  to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+                }
+              `}</style>
+            </div>
+
+            <h2 style={{
+              fontSize: '18px', fontWeight: '500', color: theme.text,
+              fontFamily: "'Inter', 'SF Pro Display', -apple-system, sans-serif",
+              margin: '0 0 6px 0', textAlign: 'center', whiteSpace: 'nowrap',
+              position: 'relative', zIndex: 1, letterSpacing: '-0.01em',
+            }}>
+              What are we working on today?
+            </h2>
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: '8px',
+              background: darkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)', borderRadius: '12px',
+              border: `1px solid ${darkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)'}`,
+              padding: '6px 12px', minWidth: '400px',
+              position: 'relative', zIndex: 1,
+            }}>
+              <input
+                type="text"
+                placeholder="I want to create..."
+                value={aiInput}
+                onChange={(e) => setAiInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter' && aiInput.trim()) { setShowAIChat(true); processAICommand(); } }}
+                style={{
+                  flex: 1, border: 'none', outline: 'none', background: 'transparent',
+                  fontSize: '14px', color: theme.text, padding: '6px',
+                  fontFamily: "'Space Grotesk', sans-serif",
+                }}
+              />
+              <button
+                onClick={() => { if (aiInput.trim()) { setShowAIChat(true); processAICommand(); } }}
+                disabled={!aiInput.trim()}
+                style={{
+                  width: '32px', height: '32px', borderRadius: '8px', border: 'none',
+                  background: aiInput.trim() ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' : 'rgba(255,255,255,0.05)',
+                  color: aiInput.trim() ? 'white' : theme.textMuted,
+                  cursor: aiInput.trim() ? 'pointer' : 'default',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  transition: 'all 0.2s',
+                }}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+              </button>
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', justifyContent: 'center', position: 'relative', zIndex: 1 }}>
+              {QUICK_PROMPTS.map(qp => (
+                <button
+                  key={qp.label}
+                  onClick={() => {
+                    setShowAIChat(true);
+                    setQuickPromptPrefix(qp.prefix);
+                    setConversationHistory(prev => [...prev, { role: 'assistant', content: qp.followUp() }]);
+                  }}
+                  style={{
+                    padding: '5px 14px', borderRadius: '20px',
+                    border: `1px solid ${darkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'}`,
+                    background: 'transparent', color: theme.textSecondary,
+                    fontSize: '13px', cursor: 'pointer',
+                    fontFamily: "'Space Grotesk', sans-serif",
+                    transition: 'all 0.2s',
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = darkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)'; e.currentTarget.style.color = theme.text; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = theme.textSecondary; }}
+                >
+                  {qp.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Main Canvas */}
         <div
           ref={canvasRefCallback}
-          onMouseDown={handleMouseDown}
+          onMouseDown={(e) => { setContextMenu(null); handleMouseDown(e); }}
           onClick={handleCanvasClick}
+          onContextMenu={(e) => handleContextMenu(e)}
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp}
           onMouseLeave={handleMouseUp}
@@ -1517,6 +1852,7 @@ The topic is optional — omit it if not specified. The template is placed autom
                 isMultiSelected={selectedIds.length > 1}
                 theme={theme}
                 user={user}
+                onContextMenu={handleContextMenu}
               />
               );
             })}
@@ -1603,7 +1939,7 @@ The topic is optional — omit it if not specified. The template is placed autom
 
             {/* Anchor dots: show on hovered, connecting, and selected connectable objects */}
             {(() => {
-              const CONNECTABLE = ['stickyNote', 'shape', 'text', 'frame', 'comment'];
+              const CONNECTABLE = ['stickyNote', 'shape', 'text', 'frame', 'comment', 'emoji'];
               const anchorIds = new Set();
               if (hoveredObjId) anchorIds.add(hoveredObjId);
               if (connectingFrom) {

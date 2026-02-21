@@ -18,6 +18,8 @@ const allowedOrigins = [
   'http://localhost:5178',
   'http://localhost:5179',
   'http://localhost:5180',
+  'http://localhost:5181',
+  'http://localhost:5182',
   process.env.FRONTEND_URL,
 ].filter(Boolean).map(o => o.trim().replace(/\/+$/, ''));
 

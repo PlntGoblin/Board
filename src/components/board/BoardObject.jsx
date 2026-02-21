@@ -8,6 +8,7 @@ export default memo(function BoardObject({
   setEditingId, setEditingText,
   handleMouseDown, setBoardObjects,
   setIsResizing, setResizeHandle, setIsRotating, isMultiSelected, theme, user,
+  onContextMenu,
 }) {
   const updateProp = (id, prop, value) => {
     setBoardObjects(prev => prev.map(o => o.id === id ? { ...o, [prop]: value } : o));
@@ -21,6 +22,7 @@ export default memo(function BoardObject({
       setBoardObjects={setBoardObjects} updateProp={updateProp}
       setIsResizing={setIsResizing} setResizeHandle={setResizeHandle}
       setIsRotating={setIsRotating} isMultiSelected={isMultiSelected}
+      onContextMenu={onContextMenu}
     />;
   }
 
@@ -32,6 +34,7 @@ export default memo(function BoardObject({
       handleMouseDown={handleMouseDown} updateProp={updateProp}
       setIsResizing={setIsResizing} setResizeHandle={setResizeHandle}
       setIsRotating={setIsRotating} isMultiSelected={isMultiSelected}
+      onContextMenu={onContextMenu}
     />;
   }
 
@@ -42,11 +45,12 @@ export default memo(function BoardObject({
       setEditingText={setEditingText} handleMouseDown={handleMouseDown}
       setBoardObjects={setBoardObjects} updateProp={updateProp} theme={theme}
       setIsRotating={setIsRotating} isMultiSelected={isMultiSelected}
+      onContextMenu={onContextMenu}
     />;
   }
 
   if (obj.type === 'frame') {
-    return <Frame obj={obj} isSelected={isSelected} isEditing={isEditing} editingText={editingText} setEditingId={setEditingId} setEditingText={setEditingText} setBoardObjects={setBoardObjects} handleMouseDown={handleMouseDown} theme={theme} setIsResizing={setIsResizing} setResizeHandle={setResizeHandle} setIsRotating={setIsRotating} isMultiSelected={isMultiSelected} />;
+    return <Frame obj={obj} isSelected={isSelected} isEditing={isEditing} editingText={editingText} setEditingId={setEditingId} setEditingText={setEditingText} setBoardObjects={setBoardObjects} handleMouseDown={handleMouseDown} theme={theme} setIsResizing={setIsResizing} setResizeHandle={setResizeHandle} setIsRotating={setIsRotating} isMultiSelected={isMultiSelected} onContextMenu={onContextMenu} />;
   }
 
   if (obj.type === 'comment') {
@@ -56,13 +60,18 @@ export default memo(function BoardObject({
       setEditingText={setEditingText} handleMouseDown={handleMouseDown}
       setBoardObjects={setBoardObjects} theme={theme}
       isMultiSelected={isMultiSelected} user={user}
+      onContextMenu={onContextMenu}
     />;
   }
 
-  if (obj.type === 'path') return <PathDrawing obj={obj} isSelected={isSelected} handleMouseDown={handleMouseDown} updateProp={updateProp} isMultiSelected={isMultiSelected} />;
-  if (obj.type === 'line') return <LineDrawing obj={obj} isSelected={isSelected} handleMouseDown={handleMouseDown} updateProp={updateProp} isMultiSelected={isMultiSelected} />;
-  if (obj.type === 'arrow') return <ArrowDrawing obj={obj} isSelected={isSelected} handleMouseDown={handleMouseDown} updateProp={updateProp} isMultiSelected={isMultiSelected} />;
-  if (obj.type === 'connector') return <ConnectorObject obj={obj} isSelected={isSelected} handleMouseDown={handleMouseDown} updateProp={updateProp} isMultiSelected={isMultiSelected} />;
+  if (obj.type === 'emoji') {
+    return <EmojiSticker obj={obj} isSelected={isSelected} handleMouseDown={handleMouseDown} setIsResizing={setIsResizing} setResizeHandle={setResizeHandle} setIsRotating={setIsRotating} isMultiSelected={isMultiSelected} onContextMenu={onContextMenu} />;
+  }
+
+  if (obj.type === 'path') return <PathDrawing obj={obj} isSelected={isSelected} handleMouseDown={handleMouseDown} updateProp={updateProp} isMultiSelected={isMultiSelected} onContextMenu={onContextMenu} />;
+  if (obj.type === 'line') return <LineDrawing obj={obj} isSelected={isSelected} handleMouseDown={handleMouseDown} updateProp={updateProp} isMultiSelected={isMultiSelected} onContextMenu={onContextMenu} />;
+  if (obj.type === 'arrow') return <ArrowDrawing obj={obj} isSelected={isSelected} handleMouseDown={handleMouseDown} updateProp={updateProp} isMultiSelected={isMultiSelected} onContextMenu={onContextMenu} />;
+  if (obj.type === 'connector') return <ConnectorObject obj={obj} isSelected={isSelected} handleMouseDown={handleMouseDown} updateProp={updateProp} isMultiSelected={isMultiSelected} onContextMenu={onContextMenu} />;
 
   return null;
 }, (prev, next) =>
@@ -74,7 +83,7 @@ export default memo(function BoardObject({
   prev.isMultiSelected === next.isMultiSelected
 )
 
-function StickyNote({ obj, isSelected, isEditing, editingText, setEditingId, setEditingText, handleMouseDown, setBoardObjects, updateProp, setIsResizing, setResizeHandle, setIsRotating, isMultiSelected }) {
+function StickyNote({ obj, isSelected, isEditing, editingText, setEditingId, setEditingText, handleMouseDown, setBoardObjects, updateProp, setIsResizing, setResizeHandle, setIsRotating, isMultiSelected, onContextMenu }) {
   const noteFontSize = obj.fontSize || 14;
   const noteAlign = obj.textAlign || 'left';
   const showToolbar = (isSelected || isEditing) && !isMultiSelected;
@@ -202,6 +211,7 @@ function StickyNote({ obj, isSelected, isEditing, editingText, setEditingId, set
 
       <div
         onMouseDown={(e) => { if (!isEditing) handleMouseDown(e, obj.id); }}
+        onContextMenu={(e) => onContextMenu?.(e, obj.id)}
         style={{
           width: obj.width, height: obj.height,
           backgroundColor: getColor(obj.color),
@@ -280,7 +290,7 @@ function autoTextColor(fillHex) {
   return luminance > 0.55 ? '#1a1a2e' : '#ffffff';
 }
 
-function Shape({ obj, isSelected, isEditing, editingText, setEditingId, setEditingText, setBoardObjects, handleMouseDown, updateProp, setIsResizing, setResizeHandle, setIsRotating, isMultiSelected }) {
+function Shape({ obj, isSelected, isEditing, editingText, setEditingId, setEditingText, setBoardObjects, handleMouseDown, updateProp, setIsResizing, setResizeHandle, setIsRotating, isMultiSelected, onContextMenu }) {
   const w = obj.width || 100;
   const h = obj.height || 100;
   const fillColor = getColor(obj.color);
@@ -543,6 +553,7 @@ function Shape({ obj, isSelected, isEditing, editingText, setEditingId, setEditi
       <svg
         width={w} height={h}
         onMouseDown={(e) => { if (!isEditing) handleMouseDown(e, obj.id); }}
+        onContextMenu={(e) => onContextMenu?.(e, obj.id)}
         onDoubleClick={(e) => {
           e.stopPropagation();
           if (!isEditing) { setEditingId(obj.id); setEditingText(obj.text || ''); }
@@ -600,7 +611,7 @@ function Shape({ obj, isSelected, isEditing, editingText, setEditingId, setEditi
   );
 }
 
-function TextObject({ obj, isSelected, isEditing, editingText, setEditingId, setEditingText, handleMouseDown, setBoardObjects, updateProp, theme, setIsRotating, isMultiSelected }) {
+function TextObject({ obj, isSelected, isEditing, editingText, setEditingId, setEditingText, handleMouseDown, setBoardObjects, updateProp, theme, setIsRotating, isMultiSelected, onContextMenu }) {
   const textFontSize = obj.fontSize || 16;
   const textAlign = obj.textAlign || 'left';
   const textColor = obj.color || theme.text;
@@ -755,6 +766,7 @@ function TextObject({ obj, isSelected, isEditing, editingText, setEditingId, set
 
       <div
         onMouseDown={(e) => { if (!isEditing) handleMouseDown(e, obj.id); }}
+        onContextMenu={(e) => onContextMenu?.(e, obj.id)}
         onDoubleClick={(e) => {
           e.stopPropagation();
           if (!isEditing) { setEditingId(obj.id); setEditingText(obj.text); }
@@ -794,11 +806,12 @@ function TextObject({ obj, isSelected, isEditing, editingText, setEditingId, set
   );
 }
 
-function Frame({ obj, isSelected, isEditing, editingText, setEditingId, setEditingText, setBoardObjects, handleMouseDown, theme, setIsResizing, setResizeHandle, setIsRotating, isMultiSelected }) {
+function Frame({ obj, isSelected, isEditing, editingText, setEditingId, setEditingText, setBoardObjects, handleMouseDown, theme, setIsResizing, setResizeHandle, setIsRotating, isMultiSelected, onContextMenu }) {
   return (
     <div
       key={obj.id}
       onMouseDown={(e) => { if (!isEditing) handleMouseDown(e, obj.id); }}
+      onContextMenu={(e) => onContextMenu?.(e, obj.id)}
       style={{
         position: 'absolute', left: obj.x, top: obj.y,
         width: obj.width, height: obj.height,
@@ -967,7 +980,7 @@ function DrawingColorToolbar({ obj, midX, midY, updateProp }) {
   );
 }
 
-function PathDrawing({ obj, isSelected, handleMouseDown, updateProp, isMultiSelected }) {
+function PathDrawing({ obj, isSelected, handleMouseDown, updateProp, isMultiSelected, onContextMenu }) {
   if (obj.points.length < 2) return null;
   const d = obj.points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
   const mid = obj.points[Math.floor(obj.points.length / 2)];
@@ -976,7 +989,7 @@ function PathDrawing({ obj, isSelected, handleMouseDown, updateProp, isMultiSele
       <svg key={obj.id} style={SVG_STYLE_INTERACTIVE}>
         <path d={d} stroke="transparent" strokeWidth={Math.max(obj.strokeWidth || 3, 16)} fill="none"
           strokeLinecap="round" strokeLinejoin="round" style={{ cursor: 'pointer', pointerEvents: 'auto' }}
-          onMouseDown={(e) => handleMouseDown(e, obj.id)} />
+          onMouseDown={(e) => handleMouseDown(e, obj.id)} onContextMenu={(e) => onContextMenu?.(e, obj.id)} />
         <path d={d} stroke={obj.color} strokeWidth={obj.strokeWidth} fill="none"
           strokeLinecap="round" strokeLinejoin="round" pointerEvents="none" opacity={obj.opacity ?? 1} />
       </svg>
@@ -985,7 +998,7 @@ function PathDrawing({ obj, isSelected, handleMouseDown, updateProp, isMultiSele
   );
 }
 
-function LineDrawing({ obj, isSelected, handleMouseDown, updateProp, isMultiSelected }) {
+function LineDrawing({ obj, isSelected, handleMouseDown, updateProp, isMultiSelected, onContextMenu }) {
   const midX = (obj.x1 + obj.x2) / 2;
   const midY = (obj.y1 + obj.y2) / 2;
   return (
@@ -994,7 +1007,7 @@ function LineDrawing({ obj, isSelected, handleMouseDown, updateProp, isMultiSele
         <line x1={obj.x1} y1={obj.y1} x2={obj.x2} y2={obj.y2}
           stroke="transparent" strokeWidth={Math.max(obj.strokeWidth || 3, 16)}
           strokeLinecap="round" style={{ cursor: 'pointer', pointerEvents: 'auto' }}
-          onMouseDown={(e) => handleMouseDown(e, obj.id)} />
+          onMouseDown={(e) => handleMouseDown(e, obj.id)} onContextMenu={(e) => onContextMenu?.(e, obj.id)} />
         <line x1={obj.x1} y1={obj.y1} x2={obj.x2} y2={obj.y2}
           stroke={obj.color} strokeWidth={obj.strokeWidth}
           strokeLinecap="round" strokeDasharray={obj.strokeDasharray || 'none'} pointerEvents="none" opacity={obj.opacity ?? 1} />
@@ -1004,7 +1017,7 @@ function LineDrawing({ obj, isSelected, handleMouseDown, updateProp, isMultiSele
   );
 }
 
-function ArrowDrawing({ obj, isSelected, handleMouseDown, updateProp, isMultiSelected }) {
+function ArrowDrawing({ obj, isSelected, handleMouseDown, updateProp, isMultiSelected, onContextMenu }) {
   const arrowSize = 12;
   const midX = (obj.x1 + obj.x2) / 2;
   const midY = (obj.y1 + obj.y2) / 2;
@@ -1020,7 +1033,7 @@ function ArrowDrawing({ obj, isSelected, handleMouseDown, updateProp, isMultiSel
         <line x1={obj.x1} y1={obj.y1} x2={obj.x2} y2={obj.y2}
           stroke="transparent" strokeWidth={Math.max(obj.strokeWidth || 3, 16)}
           strokeLinecap="round" style={{ cursor: 'pointer', pointerEvents: 'auto' }}
-          onMouseDown={(e) => handleMouseDown(e, obj.id)} />
+          onMouseDown={(e) => handleMouseDown(e, obj.id)} onContextMenu={(e) => onContextMenu?.(e, obj.id)} />
         <line x1={obj.x1} y1={obj.y1} x2={obj.x2} y2={obj.y2}
           stroke={obj.color} strokeWidth={obj.strokeWidth}
           strokeLinecap="round" strokeDasharray={obj.strokeDasharray || 'none'} markerEnd={`url(#arrowhead-${obj.id})`} pointerEvents="none" opacity={obj.opacity ?? 1} />
@@ -1030,7 +1043,7 @@ function ArrowDrawing({ obj, isSelected, handleMouseDown, updateProp, isMultiSel
   );
 }
 
-function Comment({ obj, isSelected, isEditing, editingText, setEditingId, setEditingText, handleMouseDown, setBoardObjects, theme, isMultiSelected, user }) {
+function Comment({ obj, isSelected, isEditing, editingText, setEditingId, setEditingText, handleMouseDown, setBoardObjects, theme, isMultiSelected, user, onContextMenu }) {
   const [expanded, setExpanded] = useLocalState(isEditing || isSelected);
   const [replying, setReplying] = useLocalState(false);
   const [replyText, setReplyText] = useLocalState('');
@@ -1066,6 +1079,7 @@ function Comment({ obj, isSelected, isEditing, editingText, setEditingId, setEdi
       {/* Pin icon */}
       <div
         onMouseDown={(e) => { if (!isEditing) handleMouseDown(e, obj.id); }}
+        onContextMenu={(e) => onContextMenu?.(e, obj.id)}
         onClick={(e) => { e.stopPropagation(); setExpanded(!expanded); }}
         onDoubleClick={(e) => {
           e.stopPropagation();
@@ -1332,7 +1346,7 @@ function Comment({ obj, isSelected, isEditing, editingText, setEditingId, setEdi
   );
 }
 
-function ConnectorObject({ obj, isSelected, handleMouseDown, updateProp, isMultiSelected }) {
+function ConnectorObject({ obj, isSelected, handleMouseDown, updateProp, isMultiSelected, onContextMenu }) {
   const { x1, y1, x2, y2, resolvedFromAnchor, resolvedToAnchor } = obj;
   if (x1 == null || x2 == null) return null;
   const arrowSize = 10;
@@ -1362,7 +1376,7 @@ function ConnectorObject({ obj, isSelected, handleMouseDown, updateProp, isMulti
           stroke="transparent" strokeWidth={Math.max(obj.strokeWidth || 2, 16)}
           fill="none" strokeLinecap="round"
           style={{ cursor: 'pointer', pointerEvents: 'auto' }}
-          onMouseDown={(e) => handleMouseDown(e, obj.id)} />
+          onMouseDown={(e) => handleMouseDown(e, obj.id)} onContextMenu={(e) => onContextMenu?.(e, obj.id)} />
         {/* Selection glow */}
         {isSelected && (
           <path d={pathD}
@@ -1379,6 +1393,36 @@ function ConnectorObject({ obj, isSelected, handleMouseDown, updateProp, isMulti
       </svg>
       {isSelected && !isMultiSelected && <DrawingColorToolbar obj={obj} midX={midX} midY={midY} updateProp={updateProp} />}
     </>
+  );
+}
+
+function EmojiSticker({ obj, isSelected, handleMouseDown, setIsResizing, setResizeHandle, setIsRotating, isMultiSelected, onContextMenu }) {
+  return (
+    <div key={obj.id} style={{
+      position: 'absolute', left: obj.x, top: obj.y,
+      width: obj.width || 48, height: obj.height || 48,
+      transform: obj.rotation ? `rotate(${obj.rotation}deg)` : undefined,
+      transformOrigin: 'center center',
+    }}>
+      {isSelected && !isMultiSelected && <RotationHandle setIsRotating={setIsRotating} />}
+      <div
+        onMouseDown={(e) => handleMouseDown(e, obj.id)}
+        onContextMenu={(e) => onContextMenu?.(e, obj.id)}
+        style={{
+          width: '100%', height: '100%',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: `${Math.min(obj.width || 48, obj.height || 48) * 0.75}px`,
+          cursor: 'move', userSelect: 'none',
+          filter: isSelected ? 'drop-shadow(0 0 6px rgba(33,150,243,0.5))' : 'none',
+          transition: 'filter 0.2s',
+        }}
+      >
+        {obj.emoji}
+      </div>
+      {isSelected && !isMultiSelected && (
+        <SelectionOutline obj={obj} setIsResizing={setIsResizing} setResizeHandle={setResizeHandle} />
+      )}
+    </div>
   );
 }
 

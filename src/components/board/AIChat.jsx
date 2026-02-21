@@ -1,4 +1,4 @@
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useState } from 'react';
 import { Send, Loader2, Minus } from 'lucide-react';
 
 function formatResponse(text) {
@@ -14,6 +14,16 @@ function formatResponse(text) {
   });
 }
 
+const THINKING_PHRASES = [
+  'Mission Control is evaluating…',
+  'Running diagnostics…',
+  'Analyzing telemetry…',
+  'Cross-checking systems…',
+  'Stand by, Commander…',
+  'Preparing response vector…',
+  'Hang tight — this is rocket science.',
+];
+
 export default function AIChat({
   showAIChat, setShowAIChat,
   aiInput, setAiInput, aiResponse,
@@ -22,6 +32,16 @@ export default function AIChat({
   conversationHistory,
 }) {
   const scrollRef = useRef(null);
+  const [thinkingPhrase, setThinkingPhrase] = useState(THINKING_PHRASES[0]);
+
+  useEffect(() => {
+    if (!isProcessing || aiResponse) return;
+    setThinkingPhrase(THINKING_PHRASES[Math.floor(Math.random() * THINKING_PHRASES.length)]);
+    const interval = setInterval(() => {
+      setThinkingPhrase(THINKING_PHRASES[Math.floor(Math.random() * THINKING_PHRASES.length)]);
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [isProcessing, aiResponse]);
 
   // Auto-scroll to bottom whenever history or streaming response changes
   useEffect(() => {
@@ -221,7 +241,7 @@ export default function AIChat({
                   ) : (
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                       <span style={{ fontSize: '18px', animation: 'satellite-orbit 2.5s ease-in-out infinite' }}>🛰️</span>
-                      <span style={{ fontSize: '12px', color: 'rgba(160, 175, 220, 0.6)' }}>Thinking...</span>
+                      <span style={{ fontSize: '12px', color: 'rgba(160, 175, 220, 0.6)', transition: 'opacity 0.3s' }}>{thinkingPhrase}</span>
                     </div>
                   )}
                 </div>
