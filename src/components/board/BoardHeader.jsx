@@ -1,11 +1,11 @@
-import { ArrowLeft, Cloud, CloudOff, Loader, Share2, Trash2, UserPlus } from 'lucide-react';
+import { ArrowLeft, Cloud, CloudOff, Loader, Share2, Trash2, UserPlus, LogOut } from 'lucide-react';
 import PresenceBar from '../PresenceBar';
 
 export default function BoardHeader({
   boardTitle, setBoardTitle, saveBoard, boardId, saveStatus,
   onlineUsers, user,
   onClear, hasBoardObjects, onShare, navigate, theme,
-  isGuest, onSignUp,
+  isGuest, onSignUp, onSignOut,
 }) {
   return (
     <div style={{
@@ -77,19 +77,34 @@ export default function BoardHeader({
       )}
 
       {isGuest ? (
-        <button
-          onClick={onSignUp}
-          style={{
-            display: 'flex', alignItems: 'center', gap: '6px',
-            padding: '8px 14px',
-            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-            color: 'white', border: 'none', borderRadius: '6px',
-            cursor: 'pointer', fontSize: '13px', fontWeight: '600',
-          }}
-        >
-          <UserPlus size={14} />
-          Sign Up
-        </button>
+        <>
+          <button
+            onClick={onSignOut}
+            style={{
+              display: 'flex', alignItems: 'center', gap: '5px',
+              padding: '6px 12px', background: 'none',
+              border: `1px solid ${theme.borderLight}`,
+              borderRadius: '6px', cursor: 'pointer',
+              color: theme.textSecondary, fontSize: '13px',
+            }}
+          >
+            <LogOut size={13} />
+            Sign out
+          </button>
+          <button
+            onClick={onSignUp}
+            style={{
+              display: 'flex', alignItems: 'center', gap: '6px',
+              padding: '8px 14px',
+              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+              color: 'white', border: 'none', borderRadius: '6px',
+              cursor: 'pointer', fontSize: '13px', fontWeight: '600',
+            }}
+          >
+            <UserPlus size={14} />
+            Sign Up
+          </button>
+        </>
       ) : (
         <button
           onClick={onShare}

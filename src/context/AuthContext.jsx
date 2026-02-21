@@ -111,8 +111,9 @@ export function AuthProvider({ children }) {
   };
 
   const signOut = async () => {
-    const { error } = await supabase.auth.signOut();
-    if (error) throw error;
+    await supabase.auth.signOut().catch(() => {});
+    setSession(null);
+    setUser(null);
   };
 
   const updateAvatar = async (emoji, color) => {

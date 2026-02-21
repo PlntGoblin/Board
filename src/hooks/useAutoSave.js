@@ -15,20 +15,25 @@ export function useAutoSave(boardId, boardObjects, nextId, saveBoard) {
       return;
     }
 
+    let aborted = false;
     setSaveStatus('unsaved');
     clearTimeout(timeoutRef.current);
 
     timeoutRef.current = setTimeout(async () => {
+      if (aborted) return;
       try {
         setSaveStatus('saving');
         await saveBoard(boardId, { objects: boardObjects, nextId });
-        setSaveStatus('saved');
+        if (!aborted) setSaveStatus('saved');
       } catch {
-        setSaveStatus('error');
+        if (!aborted) setSaveStatus('error');
       }
     }, AUTOSAVE_DEBOUNCE_MS);
 
-    return () => clearTimeout(timeoutRef.current);
+    return () => {
+      aborted = true;
+      clearTimeout(timeoutRef.current);
+    };
   }, [boardId, boardObjects, nextId, saveBoard]);
 
   return saveStatus;

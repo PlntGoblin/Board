@@ -97,6 +97,15 @@ function getHexVertices(obj) {
   });
 }
 
+// Compute the 6 hexagon side midpoints (between adjacent vertices)
+function getHexSideMidpoints(obj) {
+  const verts = getHexVertices(obj);
+  return Array.from({ length: 6 }, (_, i) => {
+    const next = (i + 1) % 6;
+    return { x: (verts[i].x + verts[next].x) / 2, y: (verts[i].y + verts[next].y) / 2 };
+  });
+}
+
 // Get all anchor names for an object
 export function getAnchorNames(obj) {
   if (obj.type === 'shape' && obj.shapeType === 'star') return STAR_ANCHOR_NAMES;
@@ -123,9 +132,9 @@ export function getAnchorPoint(obj, anchor) {
     const idx = parseInt(anchor[3], 10);
     point = mids[idx] || mids[0];
   } else if (anchor.startsWith('hex')) {
-    const verts = getHexVertices(obj);
+    const mids = getHexSideMidpoints(obj);
     const idx = parseInt(anchor[3], 10);
-    point = verts[idx] || verts[0];
+    point = mids[idx] || mids[0];
   } else {
     const b = getObjBounds(obj);
     const cx = b.x + b.w / 2, cy = b.y + b.h / 2;
@@ -164,7 +173,7 @@ const STAR_EXIT = Array.from({ length: 5 }, (_, i) => {
   return { dx: Math.cos(a), dy: Math.sin(a) };
 });
 const HEX_EXIT = Array.from({ length: 6 }, (_, i) => {
-  const a = (Math.PI / 3) * i - Math.PI / 2;
+  const a = (Math.PI / 3) * i - Math.PI / 2 + Math.PI / 6;
   return { dx: Math.cos(a), dy: Math.sin(a) };
 });
 // Outward normals for each triangle side (right side, bottom, left side)

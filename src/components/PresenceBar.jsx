@@ -1,7 +1,6 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 
 const PRESENCE_MESSAGES = [
-  "Another mind enters the orbit ✨",
   "Crew expanding 🚀",
   "More brains in the galaxy 🧠",
   "Welcome to the mission 👩‍🚀👨‍🚀",

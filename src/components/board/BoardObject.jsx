@@ -1026,8 +1026,9 @@ function ArrowDrawing({ obj, isSelected, handleMouseDown, updateProp, isMultiSel
       <svg key={obj.id} style={SVG_STYLE_INTERACTIVE}>
         <defs>
           <marker id={`arrowhead-${obj.id}`} markerWidth={arrowSize} markerHeight={arrowSize}
-            refX={arrowSize - 2} refY={arrowSize / 2} orient="auto">
-            <polygon points={`0 0, ${arrowSize} ${arrowSize / 2}, 0 ${arrowSize}`} fill={obj.color} />
+            viewBox={`0 0 ${arrowSize} ${arrowSize}`}
+            refX={arrowSize - 1} refY={arrowSize / 2} orient="auto">
+            <path d={`M 1 1 Q ${arrowSize * 0.55} ${arrowSize / 2} ${arrowSize - 1} ${arrowSize / 2} Q ${arrowSize * 0.55} ${arrowSize / 2} 1 ${arrowSize - 1} Q ${arrowSize * 0.2} ${arrowSize / 2} 1 1 Z`} fill={obj.color} />
           </marker>
         </defs>
         <line x1={obj.x1} y1={obj.y1} x2={obj.x2} y2={obj.y2}
@@ -1366,8 +1367,9 @@ function ConnectorObject({ obj, isSelected, handleMouseDown, updateProp, isMulti
         {isArrow && (
           <defs>
             <marker id={`conn-${obj.id}`} markerWidth={arrowSize} markerHeight={arrowSize}
-              refX={arrowSize - 2} refY={arrowSize / 2} orient="auto">
-              <polygon points={`0 0, ${arrowSize} ${arrowSize / 2}, 0 ${arrowSize}`} fill={color} />
+              viewBox={`0 0 ${arrowSize} ${arrowSize}`}
+              refX={arrowSize - 1} refY={arrowSize / 2} orient="auto">
+              <path d={`M 1 1 Q ${arrowSize * 0.55} ${arrowSize / 2} ${arrowSize - 1} ${arrowSize / 2} Q ${arrowSize * 0.55} ${arrowSize / 2} 1 ${arrowSize - 1} Q ${arrowSize * 0.2} ${arrowSize / 2} 1 1 Z`} fill={color} />
             </marker>
           </defs>
         )}

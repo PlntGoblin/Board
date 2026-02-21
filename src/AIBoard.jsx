@@ -107,6 +107,7 @@ const AIBoard = () => {
   const [showZoomMenu, setShowZoomMenu] = useState(false);
   const [showConfetti, setShowConfetti] = useState(false);
   const [showWelcome, setShowWelcome] = useState(true);
+  const [toolbarHovered, setToolbarHovered] = useState(false);
   const [quickPromptPrefix, setQuickPromptPrefix] = useState(null);
 
   // --- Refs ---
@@ -356,11 +357,10 @@ const AIBoard = () => {
   const zoomOut = useCallback(() => setZoom(prev => Math.max(+(prev / 1.25).toFixed(2), ZOOM_MIN)), []);
   const fitToScreen = useCallback(() => { setZoom(1); setViewportOffset({ x: 0, y: 0 }); }, []);
 
-  // --- Guest sign-up handler ---
+  // --- Guest sign-up / sign-out handler ---
   const handleGuestSignUp = useCallback(async () => {
     await signOut();
-    navigate('/');
-  }, [signOut, navigate]);
+  }, [signOut]);
 
   // --- AI tool execution ---
   const executeToolCall = useCallback(async (toolName, toolInput) => {
@@ -1577,7 +1577,7 @@ CRITICAL: Always batch ALL tool calls in ONE response. Never split across multip
         onClear={onClear} hasBoardObjects={boardObjects.length > 0}
         onShare={onShare}
         navigate={navigate} theme={theme}
-        isGuest={isGuest} onSignUp={handleGuestSignUp}
+        isGuest={isGuest} onSignUp={handleGuestSignUp} onSignOut={handleGuestSignUp}
       />
 
       {showShareModal && <ShareModal boardId={boardId} isPublic={isBoardPublic} onClose={() => setShowShareModal(false)} />}
@@ -1626,6 +1626,7 @@ CRITICAL: Always batch ALL tool calls in ONE response. Never split across multip
           handleUndo={handleUndo} handleRedo={handleRedo}
           canUndo={canUndo} canRedo={canRedo}
           darkMode={darkMode} theme={theme}
+          onToolbarHover={setToolbarHovered}
         />
 
         {(activeTool === 'pen' || activeTool === 'arrow' || activeTool === 'line' || activeTool === 'connector') && (
@@ -1654,6 +1655,8 @@ CRITICAL: Always batch ALL tool calls in ONE response. Never split across multip
             padding: '20px 32px', maxWidth: '520px',
             display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px',
             overflow: 'hidden',
+            opacity: toolbarHovered ? 0.7 : 1,
+            transition: 'opacity 0.3s ease',
             animation: 'welcomeFadeIn 0.4s ease-out',
           }}>
             {/* Close button */}

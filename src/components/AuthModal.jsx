@@ -271,7 +271,30 @@ export default function AuthModal({ redirectTo }) {
         alignItems: 'center',
         justifyContent: 'center',
         padding: '0 48px',
+        position: 'relative',
       }}>
+        {/* Bottom-right guest mode */}
+        <button
+          onClick={() => {
+            setError('');
+            setLoading(true);
+            localStorage.setItem('keepLoggedIn', 'false');
+            signInAsGuest()
+              .catch((err) => { setError(err.message); })
+              .finally(() => setLoading(false));
+          }}
+          style={{
+            position: 'absolute', bottom: '24px', right: '32px',
+            background: 'none', border: 'none', color: '#475569',
+            cursor: 'pointer', fontSize: '13px', fontWeight: '500', padding: 0,
+            transition: 'color 0.2s',
+          }}
+          onMouseEnter={(e) => e.currentTarget.style.color = '#94a3b8'}
+          onMouseLeave={(e) => e.currentTarget.style.color = '#475569'}
+        >
+          Guest mode
+        </button>
+
         <div style={{ width: '100%', maxWidth: '360px' }}>
 
           {/* Form heading */}
@@ -637,75 +660,17 @@ export default function AuthModal({ redirectTo }) {
                   Continue with Google
                 </button>
 
-                {/* Guest divider */}
-                <div style={{
-                  display: 'flex', alignItems: 'center', gap: '12px',
-                  margin: '18px 0',
-                }}>
-                  <div style={{ flex: 1, height: '1px', background: 'rgba(255,255,255,0.07)' }} />
-                  <span style={{ fontSize: '12px', color: '#475569' }}>or just explore</span>
-                  <div style={{ flex: 1, height: '1px', background: 'rgba(255,255,255,0.07)' }} />
-                </div>
-
-                {/* Try as Guest */}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setError('');
-                    setLoading(true);
-                    localStorage.setItem('keepLoggedIn', 'false');
-                    signInAsGuest()
-                      .catch((err) => { setError(err.message); })
-                      .finally(() => setLoading(false));
-                  }}
-                  disabled={loading}
-                  style={{
-                    width: '100%',
-                    padding: '11px',
-                    background: 'none',
-                    border: '1px dashed rgba(255,255,255,0.15)',
-                    borderRadius: '10px',
-                    fontSize: '14px',
-                    fontWeight: '500',
-                    color: '#64748b',
-                    cursor: loading ? 'not-allowed' : 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '8px',
-                    transition: 'all 0.2s',
-                  }}
-                  onMouseEnter={(e) => {
-                    if (!loading) {
-                      e.currentTarget.style.borderColor = 'rgba(56,189,248,0.4)';
-                      e.currentTarget.style.color = '#94a3b8';
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.borderColor = 'rgba(255,255,255,0.15)';
-                    e.currentTarget.style.color = '#64748b';
-                  }}
-                >
-                  Try as Guest — no signup needed
-                </button>
               </form>
             )}
           </div>
 
-          {/* Toggle */}
-          <p style={{
-            textAlign: 'center',
-            marginTop: '20px',
-            fontSize: '14px',
-            color: '#475569',
-          }}>
-            {isSignUp ? 'Already have an account?' : "Don't have an account?"}{' '}
+          <p style={{ textAlign: 'center', marginTop: '20px', fontSize: '14px', color: '#475569' }}>
+            {isSignUp ? 'Have an account? ' : "Don't have an account? "}
             <button
               onClick={() => { setIsSignUp(!isSignUp); setError(''); }}
               style={{
-                background: 'none', border: 'none',
-                color: '#38bdf8', cursor: 'pointer',
-                fontSize: '14px', fontWeight: '500',
+                background: 'none', border: 'none', color: '#38bdf8',
+                cursor: 'pointer', fontSize: '14px', fontWeight: '500',
                 padding: 0, transition: 'color 0.2s',
               }}
               onMouseEnter={(e) => e.currentTarget.style.color = '#7dd3fc'}

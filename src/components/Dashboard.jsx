@@ -669,11 +669,10 @@ export default function Dashboard() {
               {showUserMenu && (
                 <div style={{
                   position: 'absolute', top: '44px', right: '0',
-                  background: 'rgba(15,15,25,0.95)',
+                  background: '#0f0f19',
                   border: '1px solid rgba(255,255,255,0.1)',
                   borderRadius: '12px',
-                  boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
-                  backdropFilter: 'blur(20px)',
+                  boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
                   minWidth: '220px',
                   zIndex: 1000,
                   overflow: 'hidden',

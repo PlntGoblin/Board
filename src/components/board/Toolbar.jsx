@@ -127,12 +127,12 @@ export default memo(function Toolbar({
   selectedId, selectedIds,
   handleDelete,
   handleUndo, handleRedo, canUndo, canRedo,
-  darkMode, theme,
+  darkMode, theme, onToolbarHover,
 }) {
   const hasSelection = selectedId || selectedIds.length > 0;
 
   return (
-    <div className="toolbar-scroll" onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} style={{
+    <div className="toolbar-scroll" onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} onMouseEnter={() => onToolbarHover?.(true)} onMouseLeave={() => onToolbarHover?.(false)} style={{
       position: 'absolute', left: '16px', top: '16px',
       display: 'flex', flexDirection: 'column', gap: '8px', zIndex: 10,
       maxHeight: 'calc(100vh - 100px)', overflowY: 'auto',
