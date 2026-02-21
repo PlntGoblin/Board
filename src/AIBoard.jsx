@@ -586,6 +586,74 @@ const AIBoard = () => {
         if (!resp.ok) return { error: data.error || 'Content generation failed' };
         return { items: data.items };
       }
+      case "createTemplate": {
+        const { templateType, topic } = toolInput;
+        const suffix = topic ? ` — ${topic}` : '';
+        // Compute start position from existing board content
+        let sx = 600, sy = 400;
+        if (boardObjects.length > 0) {
+          sx = Math.round(Math.max(...boardObjects.map(o => (o.x ?? o.x1 ?? 0) + (o.width || 200))) + 80);
+          sy = Math.round(Math.min(...boardObjects.map(o => o.y ?? o.y1 ?? 0)));
+        }
+        const mkFrame = (x, y, w, h, title) => ({ id: nextId.current++, type: 'frame', x, y, width: w, height: h, title });
+        const mkSticky = (x, y, color, text = '') => ({ id: nextId.current++, type: 'stickyNote', x, y, width: 200, height: 200, color, text });
+        const newObjects = [];
+        let bounds = { x: sx, y: sy, w: 400, h: 400 };
+
+        if (templateType === 'swot') {
+          newObjects.push(
+            mkFrame(sx,       sy,       400, 350, `Strengths${suffix}`),
+            mkFrame(sx + 420, sy,       400, 350, `Weaknesses${suffix}`),
+            mkFrame(sx,       sy + 370, 400, 350, `Opportunities${suffix}`),
+            mkFrame(sx + 420, sy + 370, 400, 350, `Threats${suffix}`),
+            mkSticky(sx + 100, sy + 92,       'green',  ''),
+            mkSticky(sx + 520, sy + 92,       'pink',   ''),
+            mkSticky(sx + 100, sy + 462,      'blue',   ''),
+            mkSticky(sx + 520, sy + 462,      'orange', ''),
+          );
+          bounds = { x: sx, y: sy, w: 820, h: 720 };
+        } else if (templateType === 'userJourney') {
+          const stages = ['Awareness', 'Consideration', 'Purchase', 'Onboarding', 'Retention'];
+          const frameIds = [];
+          stages.forEach((stage, i) => {
+            const fx = sx + i * 330;
+            const frame = mkFrame(fx, sy, 300, 450, stage);
+            frameIds.push(frame.id);
+            newObjects.push(frame, mkSticky(fx + 50, sy + 20, 'blue', 'User action'), mkSticky(fx + 50, sy + 230, 'yellow', 'Touchpoint'));
+          });
+          // Connect stages left-to-right
+          for (let i = 0; i < frameIds.length - 1; i++) {
+            newObjects.push({ id: nextId.current++, type: 'connector', fromId: frameIds[i], toId: frameIds[i + 1], fromAnchor: 'right', toAnchor: 'left', style: 'arrow', color: '#667eea', strokeWidth: 2 });
+          }
+          bounds = { x: sx, y: sy, w: 5 * 330, h: 450 };
+        } else if (templateType === 'retrospective') {
+          const cols = ["What Went Well", "What Didn't Go Well", "Action Items"];
+          const colors = ['green', 'pink', 'blue'];
+          cols.forEach((col, i) => {
+            const fx = sx + i * 370;
+            newObjects.push(mkFrame(fx, sy, 350, 450, col), mkSticky(fx + 75, sy + 20, colors[i], ''), mkSticky(fx + 75, sy + 230, colors[i], ''));
+          });
+          bounds = { x: sx, y: sy, w: 1110, h: 450 };
+        } else if (templateType === 'kanban') {
+          const cols = ['To Do', 'In Progress', 'Review', 'Done'];
+          cols.forEach((col, i) => {
+            const fx = sx + i * 320;
+            newObjects.push(mkFrame(fx, sy, 300, 500, col), mkSticky(fx + 50, sy + 20, 'yellow', 'Task 1'), mkSticky(fx + 50, sy + 230, 'yellow', 'Task 2'));
+          });
+          bounds = { x: sx, y: sy, w: 1280, h: 500 };
+        } else if (templateType === 'proCon') {
+          newObjects.push(
+            mkFrame(sx,       sy, 340, 420, `Pros${suffix}`),
+            mkFrame(sx + 360, sy, 340, 420, `Cons${suffix}`),
+            mkSticky(sx + 70,       sy + 127, 'green', ''),
+            mkSticky(sx + 430,      sy + 127, 'pink',  ''),
+          );
+          bounds = { x: sx, y: sy, w: 700, h: 420 };
+        }
+
+        setBoardObjects(prev => [...prev, ...newObjects]);
+        return { success: true, objectCount: newObjects.length, ...bounds };
+      }
       default:
         return { error: `Unknown tool: ${toolName}` };
     }
@@ -618,69 +686,6 @@ const AIBoard = () => {
     let maxRight = -Infinity, minObjY = Infinity;
     for (const obj of boardObjects) { const b = getObjBounds(obj); maxRight = Math.max(maxRight, b.x + b.w); minObjY = Math.min(minObjY, b.y); }
     return { x: Math.round(maxRight + pad), y: Math.round(minObjY) };
-  })();
-
-  // Pre-compute exact absolute coordinates for every template object (no AI arithmetic needed)
-  const T = (() => {
-    const sx = nextOpenSpace.x, sy = nextOpenSpace.y;
-    // Sticky centering: frame 400w → (400-200)/2=100 left margin; frame 350h, ~35px title → (350-35-200)/2+35=92 top margin
-    const sc = (fx, fy) => ({ x: fx + 100, y: fy + 92 }); // center a 200x200 sticky inside a 400x350 frame
-
-    // SWOT (2×2 grid of 400×350 frames, 20px gap)
-    const swF = [
-      { x: sx,       y: sy,       w: 400, h: 350, title: 'Strengths' },
-      { x: sx + 420, y: sy,       w: 400, h: 350, title: 'Weaknesses' },
-      { x: sx,       y: sy + 370, w: 400, h: 350, title: 'Opportunities' },
-      { x: sx + 420, y: sy + 370, w: 400, h: 350, title: 'Threats' },
-    ];
-    const swS = [
-      { ...sc(sx, sy),             color: 'green'  },
-      { ...sc(sx + 420, sy),       color: 'pink'   },
-      { ...sc(sx, sy + 370),       color: 'blue'   },
-      { ...sc(sx + 420, sy + 370), color: 'orange' },
-    ];
-
-    // Kanban (4 frames of 300×500, 20px gap; stickies stacked, 50px left margin in 300w frame)
-    const kbFX = [sx, sx + 320, sx + 640, sx + 960];
-    const kbFrames = [
-      { x: kbFX[0], y: sy, w: 300, h: 500, title: 'To Do' },
-      { x: kbFX[1], y: sy, w: 300, h: 500, title: 'In Progress' },
-      { x: kbFX[2], y: sy, w: 300, h: 500, title: 'Review' },
-      { x: kbFX[3], y: sy, w: 300, h: 500, title: 'Done' },
-    ];
-    // 3 stickies per column: top=sy+45, mid=sy+255, bot=sy+395 (height 95 for last)
-    const kbStickies = kbFX.map(fx => [
-      { x: fx + 50, y: sy + 45,  color: 'yellow' },
-      { x: fx + 50, y: sy + 255, color: 'yellow' },
-    ]);
-
-    // Retro (3 frames of 350×450)
-    const retFX = [sx, sx + 370, sx + 740];
-    const retFrames = [
-      { x: retFX[0], y: sy, w: 350, h: 450, title: 'What Went Well' },
-      { x: retFX[1], y: sy, w: 350, h: 450, title: "What Didn't Go Well" },
-      { x: retFX[2], y: sy, w: 350, h: 450, title: 'Action Items' },
-    ];
-    const retColors = ['green', 'pink', 'blue'];
-    // center 200x200 sticky in 350w frame: (350-200)/2=75 left margin
-    // frame h=450: first at +20, second at +230 → bottom at +430 (fits with 20px to spare)
-    const retStickies = retFX.map((fx, i) => [
-      { x: fx + 75, y: sy + 20,  color: retColors[i] },
-      { x: fx + 75, y: sy + 230, color: retColors[i] },
-    ]);
-
-    // Pro/Con (2 frames of 340×420)
-    const pcFrames = [
-      { x: sx,       y: sy, w: 340, h: 420, title: 'Pros' },
-      { x: sx + 360, y: sy, w: 340, h: 420, title: 'Cons' },
-    ];
-    // center in 340w: (340-200)/2=70; center in 420h with 35px title: (420-35-200)/2+35=127
-    const pcStickies = [
-      { x: sx + 70,       y: sy + 127, color: 'green' },
-      { x: sx + 360 + 70, y: sy + 127, color: 'pink'  },
-    ];
-
-    return { swF, swS, kbFrames, kbStickies, retFrames, retStickies, pcFrames, pcStickies };
   })();
 
   // Pre-inject board state so the AI doesn't need to call getBoardState (saves a round-trip)
@@ -735,55 +740,13 @@ Rules:
 - CRITICAL: When the user says "arrange these", "space these", "align these", "move these", or any command referencing "these"/"them" — ALWAYS use the selected object IDs listed above. Do NOT create new objects.
 - Be creative and helpful.
 
-Template Blueprints — when the user asks for one of these, follow the layout precisely using the EXACT pixel values given. No approximations.
-Use sx=${nextOpenSpace.x}, sy=${nextOpenSpace.y} as your base. All positions below are offsets from (sx, sy). Do NOT call findOpenSpace — the base is already provided above.
-
-SWOT Analysis — use these EXACT coordinates, copy them verbatim:
-  Frame "Strengths"     x=${T.swF[0].x} y=${T.swF[0].y} width=400 height=350
-  Frame "Weaknesses"    x=${T.swF[1].x} y=${T.swF[1].y} width=400 height=350
-  Frame "Opportunities" x=${T.swF[2].x} y=${T.swF[2].y} width=400 height=350
-  Frame "Threats"       x=${T.swF[3].x} y=${T.swF[3].y} width=400 height=350
-  Sticky green  "Placeholder" x=${T.swS[0].x} y=${T.swS[0].y}
-  Sticky pink   "Placeholder" x=${T.swS[1].x} y=${T.swS[1].y}
-  Sticky blue   "Placeholder" x=${T.swS[2].x} y=${T.swS[2].y}
-  Sticky orange "Placeholder" x=${T.swS[3].x} y=${T.swS[3].y}
-
-User Journey Map — use these EXACT coordinates:
-  Frame "Awareness"     x=${nextOpenSpace.x}       y=${nextOpenSpace.y} width=300 height=450
-  Frame "Consideration" x=${nextOpenSpace.x + 330}  y=${nextOpenSpace.y} width=300 height=450
-  Frame "Purchase"      x=${nextOpenSpace.x + 660}  y=${nextOpenSpace.y} width=300 height=450
-  Frame "Onboarding"    x=${nextOpenSpace.x + 990}  y=${nextOpenSpace.y} width=300 height=450
-  Frame "Retention"     x=${nextOpenSpace.x + 1320} y=${nextOpenSpace.y} width=300 height=450
-Inside each frame, 3 stickies stacked (50px left margin, first at frame_y+45, second at frame_y+255):
-  blue "User action", yellow "Touchpoint", pink "Pain point"
-Connect frames in sequence with createConnector style "arrow".
-
-Retrospective Board — use these EXACT coordinates:
-  Frame "What Went Well"      x=${T.retFrames[0].x} y=${T.retFrames[0].y} width=350 height=450
-  Frame "What Didn't Go Well" x=${T.retFrames[1].x} y=${T.retFrames[1].y} width=350 height=450
-  Frame "Action Items"        x=${T.retFrames[2].x} y=${T.retFrames[2].y} width=350 height=450
-  Sticky green  "Placeholder" x=${T.retStickies[0][0].x} y=${T.retStickies[0][0].y}
-  Sticky green  "Placeholder" x=${T.retStickies[0][1].x} y=${T.retStickies[0][1].y}
-  Sticky pink   "Placeholder" x=${T.retStickies[1][0].x} y=${T.retStickies[1][0].y}
-  Sticky pink   "Placeholder" x=${T.retStickies[1][1].x} y=${T.retStickies[1][1].y}
-  Sticky blue   "Placeholder" x=${T.retStickies[2][0].x} y=${T.retStickies[2][0].y}
-  Sticky blue   "Placeholder" x=${T.retStickies[2][1].x} y=${T.retStickies[2][1].y}
-
-Kanban Board — use these EXACT coordinates:
-  Frame "To Do"       x=${T.kbFrames[0].x} y=${T.kbFrames[0].y} width=300 height=500
-  Frame "In Progress" x=${T.kbFrames[1].x} y=${T.kbFrames[1].y} width=300 height=500
-  Frame "Review"      x=${T.kbFrames[2].x} y=${T.kbFrames[2].y} width=300 height=500
-  Frame "Done"        x=${T.kbFrames[3].x} y=${T.kbFrames[3].y} width=300 height=500
-  Sticky yellow "Task 1" x=${T.kbStickies[0][0].x} y=${T.kbStickies[0][0].y}
-  Sticky yellow "Task 2" x=${T.kbStickies[0][1].x} y=${T.kbStickies[0][1].y}
-
-Pro/Con Grid — use these EXACT coordinates:
-  Frame "Pros" x=${T.pcFrames[0].x} y=${T.pcFrames[0].y} width=340 height=420
-  Frame "Cons" x=${T.pcFrames[1].x} y=${T.pcFrames[1].y} width=340 height=420
-  Sticky green "Add a pro" x=${T.pcStickies[0].x} y=${T.pcStickies[0].y}
-  Sticky pink  "Add a con" x=${T.pcStickies[1].x} y=${T.pcStickies[1].y}
-
-Templates are placed at the viewport center, so they are already visible. Do NOT call zoomToFit for templates.`,
+Templates — ALWAYS use the createTemplate tool for any of these. Never build them manually with individual createFrame/createStickyNote calls. It's instant.
+- SWOT analysis → createTemplate({ templateType: "swot", topic: "<user's topic>" })
+- User journey map → createTemplate({ templateType: "userJourney", topic: "<user's topic>" })
+- Retrospective board → createTemplate({ templateType: "retrospective", topic: "<user's topic>" })
+- Kanban board → createTemplate({ templateType: "kanban", topic: "<user's topic>" })
+- Pro/con grid → createTemplate({ templateType: "proCon", topic: "<user's topic>" })
+The topic is optional — omit it if not specified. The template is placed automatically. Do NOT call zoomToFit after createTemplate.`,
   };
 
   const processAICommand = async () => {
@@ -796,7 +759,7 @@ Templates are placed at the viewport center, so they are already visible. Do NOT
     setConversationHistory(newHistory);
     // Track bounds of newly created objects directly from tool inputs (no state read needed)
     const createdBounds = [];
-    const CREATION_TOOLS_AI = new Set(['createStickyNote', 'createShape', 'createFrame', 'createText']);
+    const CREATION_TOOLS_AI = new Set(['createStickyNote', 'createShape', 'createFrame', 'createText', 'createTemplate']);
 
     try {
       let currentMessages = [systemMessage, ...newHistory];
@@ -849,12 +812,17 @@ Templates are placed at the viewport center, so they are already visible. Do NOT
 
             // Collect bounds synchronously from tool inputs — no state read needed
             if (CREATION_TOOLS_AI.has(toolName) && result.success) {
-              createdBounds.push({
-                x: toolInput.x ?? 0,
-                y: toolInput.y ?? 0,
-                w: toolInput.width || 200,
-                h: toolInput.height || 200,
-              });
+              if (toolName === 'createTemplate') {
+                // createTemplate returns its own bounds (covers the whole template)
+                createdBounds.push({ x: result.x, y: result.y, w: result.w, h: result.h });
+              } else {
+                createdBounds.push({
+                  x: toolInput.x ?? 0,
+                  y: toolInput.y ?? 0,
+                  w: toolInput.width || 200,
+                  h: toolInput.height || 200,
+                });
+              }
             }
 
             currentMessages = [

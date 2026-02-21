@@ -295,6 +295,20 @@ export const generateContentTool = tool(
   }
 );
 
+export const createTemplateTool = tool(
+  async (args) => args,
+  {
+    name: "createTemplate",
+    description: "Instantly build a complete template (frames + sticky notes + connectors) in a single call. Use this for SWOT analysis, user journey maps, retrospective boards, kanban boards, and pro/con grids. Always prefer this over manually calling createFrame and createStickyNote repeatedly.",
+    schema: z.object({
+      templateType: z
+        .enum(["swot", "userJourney", "retrospective", "kanban", "proCon"])
+        .describe("Template to build: swot=4-quadrant analysis, userJourney=5-stage journey, retrospective=3-column retro, kanban=4-column board, proCon=pros and cons"),
+      topic: z.string().optional().describe("Optional theme or topic to label the template (e.g. 'Product Launch', 'Q3 Sprint')"),
+    }),
+  }
+);
+
 // Ordered list of all board tools
 export const boardTools = [
   createStickyNoteTool,
@@ -316,6 +330,7 @@ export const boardTools = [
   distributeObjectsTool,
   webSearchTool,
   generateContentTool,
+  createTemplateTool,
 ];
 
 // OpenAI function-calling format — generated from Zod schemas

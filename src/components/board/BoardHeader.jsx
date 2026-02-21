@@ -4,7 +4,7 @@ import PresenceBar from '../PresenceBar';
 export default function BoardHeader({
   boardTitle, setBoardTitle, saveBoard, boardId, saveStatus,
   onlineUsers, user,
-  onClear, onShare, navigate, theme,
+  onClear, hasBoardObjects, onShare, navigate, theme,
 }) {
   return (
     <div style={{
@@ -57,19 +57,21 @@ export default function BoardHeader({
 
       <PresenceBar users={onlineUsers} currentUser={user} theme={theme} />
 
-      <button
-        onClick={onClear}
-        style={{
-          display: 'flex', alignItems: 'center', gap: '5px',
-          padding: '6px 12px', background: 'none',
-          border: '1px solid #ef5350',
-          borderRadius: '6px', cursor: 'pointer',
-          color: '#ef5350', fontSize: '13px',
-        }}
-      >
-        <Trash2 size={13} />
-        Clear
-      </button>
+      {hasBoardObjects && (
+        <button
+          onClick={onClear}
+          style={{
+            display: 'flex', alignItems: 'center', gap: '5px',
+            padding: '6px 12px', background: 'none',
+            border: '1px solid #ef5350',
+            borderRadius: '6px', cursor: 'pointer',
+            color: '#ef5350', fontSize: '13px',
+          }}
+        >
+          <Trash2 size={13} />
+          Clear
+        </button>
+      )}
 
       <button
         onClick={onShare}

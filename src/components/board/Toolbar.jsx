@@ -2,7 +2,7 @@ import { memo, useState as useLocalState, useEffect, useRef } from 'react';
 import {
   MousePointer, Hand, Pen, Eraser, Type, ArrowRight, Minus,
   StickyNote, Shapes, Square, Circle, Triangle, Diamond, Hexagon, Star,
-  Frame, MessageSquare,
+  Frame, MessageSquare, Share2,
   Undo, Redo, Trash2,
 } from 'lucide-react';
 
@@ -14,6 +14,7 @@ const TOOLS = [
   { id: 'text', icon: Type, label: 'Text' },
   { id: 'arrow', icon: ArrowRight, label: 'Arrow' },
   { id: 'line', icon: Minus, label: 'Line' },
+  { id: 'connector', icon: Share2, label: 'Connector' },
 ];
 
 const STICKY_PICKER = [
@@ -131,7 +132,7 @@ export default memo(function Toolbar({
   stickyColor, setStickyColor, shapeType, setShapeType,
   selectedId, selectedIds,
   handleDelete,
-  handleUndo, handleRedo, historyIndex, historyLength,
+  handleUndo, handleRedo, canUndo, canRedo,
   darkMode, theme,
 }) {
   const hasSelection = selectedId || selectedIds.length > 0;
@@ -270,8 +271,8 @@ export default memo(function Toolbar({
         display: 'flex', flexDirection: 'column', padding: '6px', gap: '4px', alignItems: 'center',
       }}>
         {[
-          { action: handleUndo, icon: Undo, label: 'Undo (⌘Z)', enabled: historyIndex > 0 },
-          { action: handleRedo, icon: Redo, label: 'Redo (⌘⇧Z)', enabled: historyIndex < historyLength - 1 },
+          { action: handleUndo, icon: Undo, label: 'Undo (⌘Z)', enabled: canUndo },
+          { action: handleRedo, icon: Redo, label: 'Redo (⌘⇧Z)', enabled: canRedo },
         ].map(({ action, icon, label, enabled }) => (
           <ToolButton
             key={label}
