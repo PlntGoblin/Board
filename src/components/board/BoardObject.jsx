@@ -1339,7 +1339,7 @@ function ConnectorObject({ obj, isSelected, handleMouseDown, updateProp, isMulti
   const midX = (x1 + x2) / 2;
   const midY = (y1 + y2) / 2;
   const isArrow = obj.style !== 'line';
-  const color = obj.color || '#ffffff';
+  const color = obj.color || '#8B8FA3';
   const pathD = computeCurvedConnectorPath(
     x1, y1, x2, y2,
     resolvedFromAnchor || obj.fromAnchor || 'right',

@@ -1,3 +1,15 @@
+// Rotate point (px, py) around center (cx, cy) by angleDeg degrees
+function rotatePoint(px, py, cx, cy, angleDeg) {
+  if (!angleDeg) return { x: px, y: py };
+  const rad = (angleDeg * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  return {
+    x: cx + (px - cx) * cos - (py - cy) * sin,
+    y: cy + (px - cx) * sin + (py - cy) * cos,
+  };
+}
+
 export function pointToSegmentDist(px, py, x1, y1, x2, y2) {
   const dx = x2 - x1, dy = y2 - y1;
   const lenSq = dx * dx + dy * dy;
@@ -96,39 +108,43 @@ export function getAnchorNames(obj) {
 
 // Get the pixel position of a named anchor on an object
 export function getAnchorPoint(obj, anchor) {
-  // Star anchors at the 5 tips
+  let point;
+
   if (anchor.startsWith('star')) {
     const tips = getStarTips(obj);
     const idx = parseInt(anchor[4], 10);
-    return tips[idx] || tips[0];
-  }
-  // Diamond anchors at the 4 side midpoints
-  if (anchor.startsWith('dia')) {
+    point = tips[idx] || tips[0];
+  } else if (anchor.startsWith('dia')) {
     const mids = getDiaSideMidpoints(obj);
     const idx = parseInt(anchor[3], 10);
-    return mids[idx] || mids[0];
-  }
-  // Triangle anchors at the 3 side midpoints
-  if (anchor.startsWith('tri')) {
+    point = mids[idx] || mids[0];
+  } else if (anchor.startsWith('tri')) {
     const mids = getTriSideMidpoints(obj);
     const idx = parseInt(anchor[3], 10);
-    return mids[idx] || mids[0];
-  }
-  // Hexagon anchors at the 6 vertices
-  if (anchor.startsWith('hex')) {
+    point = mids[idx] || mids[0];
+  } else if (anchor.startsWith('hex')) {
     const verts = getHexVertices(obj);
     const idx = parseInt(anchor[3], 10);
-    return verts[idx] || verts[0];
+    point = verts[idx] || verts[0];
+  } else {
+    const b = getObjBounds(obj);
+    const cx = b.x + b.w / 2, cy = b.y + b.h / 2;
+    switch (anchor) {
+      case 'top':    point = { x: cx,        y: b.y        }; break;
+      case 'right':  point = { x: b.x + b.w, y: cy         }; break;
+      case 'bottom': point = { x: cx,        y: b.y + b.h  }; break;
+      case 'left':   point = { x: b.x,       y: cy         }; break;
+      default:       point = { x: cx,        y: cy         }; break;
+    }
   }
-  const b = getObjBounds(obj);
-  const cx = b.x + b.w / 2, cy = b.y + b.h / 2;
-  switch (anchor) {
-    case 'top':    return { x: cx,        y: b.y        };
-    case 'right':  return { x: b.x + b.w, y: cy         };
-    case 'bottom': return { x: cx,        y: b.y + b.h  };
-    case 'left':   return { x: b.x,       y: cy         };
-    default:       return { x: cx,        y: cy         };
+
+  // Apply rotation if the object has one — rotates anchor around object center
+  if (obj.rotation) {
+    const b = getObjBounds(obj);
+    const cx = b.x + b.w / 2, cy = b.y + b.h / 2;
+    return rotatePoint(point.x, point.y, cx, cy, obj.rotation);
   }
+  return point;
 }
 
 // Find which anchor is closest to a given point

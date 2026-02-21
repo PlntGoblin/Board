@@ -209,6 +209,29 @@ export const zoomToFitTool = tool(
   }
 );
 
+export const findObjectsTool = tool(
+  async (args) => args,
+  {
+    name: "findObjects",
+    description:
+      "Search the board for objects matching a filter. Returns matching object IDs and basic info. Much faster and cheaper than getBoardState — use this instead when you need to find specific objects by type, color, or text content.",
+    schema: z.object({
+      type: z
+        .enum(["stickyNote", "shape", "frame", "text", "path", "connector"])
+        .optional()
+        .describe("Filter by object type"),
+      color: z
+        .string()
+        .optional()
+        .describe("Filter by color (e.g. 'yellow', 'pink', '#ff0000')"),
+      textContains: z
+        .string()
+        .optional()
+        .describe("Filter by text/title containing this substring (case-insensitive)"),
+    }),
+  }
+);
+
 export const getBoardStateTool = tool(
   async (args) => args,
   {
@@ -323,6 +346,7 @@ export const boardTools = [
   createDrawingTool,
   createTextTool,
   zoomToFitTool,
+  findObjectsTool,
   getBoardStateTool,
   findOpenSpaceTool,
   deleteObjectsTool,

@@ -79,7 +79,7 @@ export const TEXT_COLORS = [
 ];
 
 export const DRAW_COLORS = [
-  '#000000', '#FF5252',
+  '#8B8FA3', '#000000', '#FF5252',
   '#FF9800', '#FFEB3B',
   '#4CAF50', '#2196F3',
   '#9C27B0', '#E91E63',

@@ -50,7 +50,7 @@ const AIBoard = () => {
   const [activeTool, setActiveTool] = useState('select');
   const [isDrawing, setIsDrawing] = useState(false);
   const [currentPath, setCurrentPath] = useState([]);
-  const [drawColor, setDrawColor] = useState('#000000');
+  const [drawColor, setDrawColor] = useState('#8B8FA3');
   const [strokeWidth, setStrokeWidth] = useState(3);
   const [lineStart, setLineStart] = useState(null);
   const [lineEnd, setLineEnd] = useState(null);
@@ -367,7 +367,7 @@ const AIBoard = () => {
         const n = {
           id: nextId.current++, type: connectorType,
           x1: fromCenterX, y1: fromCenterY, x2: toCenterX, y2: toCenterY,
-          color: toolInput.color || '#ffffff', strokeWidth: 2,
+          color: toolInput.color || '#8B8FA3', strokeWidth: 2,
           fromId: toolInput.fromId, toId: toolInput.toId,
           ...(toolInput.style === 'dashed' ? { strokeDasharray: '8 4' } : {}),
         };
@@ -412,6 +412,20 @@ const AIBoard = () => {
         const n = { id: nextId.current++, type: 'text', x: toolInput.x, y: toolInput.y, width: 200, height: 50, text: toolInput.text };
         setBoardObjects(prev => [...prev, n]);
         return { success: true, objectId: n.id };
+      }
+      case "findObjects": {
+        const { type, color, textContains } = toolInput;
+        const matches = boardObjects.filter(o => {
+          if (type && o.type !== type) return false;
+          if (color && o.color !== color) return false;
+          if (textContains) {
+            const search = textContains.toLowerCase();
+            const content = (o.text || o.title || '').toLowerCase();
+            if (!content.includes(search)) return false;
+          }
+          return true;
+        });
+        return { count: matches.length, objects: matches.map(o => ({ id: o.id, type: o.type, ...(o.text ? { text: o.text.slice(0, 40) } : {}), ...(o.title ? { title: o.title.slice(0, 40) } : {}), ...(o.color ? { color: o.color } : {}), x: Math.round(o.x), y: Math.round(o.y) })) };
       }
       case "getBoardState":
         return { objects: boardObjects.map(({ id, type, x, y, width, height, color, text, title, shapeType, x1, y1, x2, y2, fromId, toId }) => ({ id, type, x, y, width, height, color, text, title, shapeType, ...(x1 !== undefined ? { x1, y1, x2, y2 } : {}), ...(fromId !== undefined ? { fromId, toId } : {}) })) };
@@ -721,8 +735,9 @@ Use (sx=${nextOpenSpace.x}, sy=${nextOpenSpace.y}) as your base for templates an
 
 Rules:
 - For CREATING new objects: use the pre-computed open area above as your starting position. Do NOT call findOpenSpace — it is already done for you.
-- For MODIFYING existing objects (move, resize, recolor, delete, connect): use the board state above to find object IDs. Only call getBoardState if the above state seems stale or incomplete.
-- Do NOT call getBoardState as a first step — the board state is already provided above.
+- For MODIFYING existing objects (move, resize, recolor, delete, connect): use the board state above to find object IDs.
+- Use findObjects(filter) to search for specific objects by type, color, or text — it's fast and token-cheap. Example: findObjects({ type: "stickyNote", color: "pink" }) returns matching IDs instantly.
+- Do NOT call getBoardState — the board state is already in the system prompt. Only use it as a last resort if findObjects can't get what you need after board mutations.
 - BATCH all tool calls: when creating a template or multiple objects, issue ALL tool calls (frames, stickies, connectors) in ONE response — do not split them across multiple replies.
 - Be concise: after completing a task, reply with ONE short sentence only (e.g. "Done — SWOT analysis created."). Do not explain what you did, list the objects, or mention zoom.
 - Prefer modifying existing objects (move, resize, recolor) over deleting and recreating them.
@@ -983,11 +998,12 @@ The topic is optional — omit it if not specified. The template is placed autom
       // Connector drag: runs whenever actively dragging from an anchor (any tool)
       if (connectingFrom && pt) {
         const CONNECTABLE = ['stickyNote', 'shape', 'text', 'frame', 'comment'];
+        const CONN_PAD = 25;
         const underCursor = boardObjects.find(o => {
           if (!CONNECTABLE.includes(o.type)) return false;
           if (o.id === connectingFrom.objId) return false;
           const b = getObjBounds(o);
-          return pt.x >= b.x && pt.x <= b.x + b.w && pt.y >= b.y && pt.y <= b.y + b.h;
+          return pt.x >= b.x - CONN_PAD && pt.x <= b.x + b.w + CONN_PAD && pt.y >= b.y - CONN_PAD && pt.y <= b.y + b.h + CONN_PAD;
         });
         setHoveredObjId(underCursor?.id ?? null);
 
@@ -1007,10 +1023,11 @@ The topic is optional — omit it if not specified. The template is placed autom
       // Connector tool hover detection (no active drag)
       if (activeTool === 'connector' && pt) {
         const CONNECTABLE = ['stickyNote', 'shape', 'text', 'frame', 'comment'];
+        const CONN_PAD = 25;
         const underCursor = boardObjects.find(o => {
           if (!CONNECTABLE.includes(o.type)) return false;
           const b = getObjBounds(o);
-          return pt.x >= b.x && pt.x <= b.x + b.w && pt.y >= b.y && pt.y <= b.y + b.h;
+          return pt.x >= b.x - CONN_PAD && pt.x <= b.x + b.w + CONN_PAD && pt.y >= b.y - CONN_PAD && pt.y <= b.y + b.h + CONN_PAD;
         });
         setHoveredObjId(underCursor?.id ?? null);
         return;
@@ -1085,20 +1102,45 @@ The topic is optional — omit it if not specified. The template is placed autom
             }));
           }
         } else {
-          setBoardObjects(prev => prev.map(obj => {
-            if (obj.id !== draggedId) return obj;
-            if (obj.type === 'line' || obj.type === 'arrow') {
-              const dx = newX - (obj.x1 ?? 0);
-              const dy = newY - (obj.y1 ?? 0);
-              return { ...obj, x1: obj.x1 + dx, y1: obj.y1 + dy, x2: obj.x2 + dx, y2: obj.y2 + dy };
+          setBoardObjects(prev => {
+            const draggedObj = prev.find(o => o.id === draggedId);
+            if (!draggedObj) return prev;
+
+            // Calculate delta
+            let dx, dy;
+            if (draggedObj.type === 'line' || draggedObj.type === 'arrow') {
+              dx = newX - (draggedObj.x1 ?? 0); dy = newY - (draggedObj.y1 ?? 0);
+            } else if (draggedObj.type === 'path') {
+              dx = newX - (draggedObj.points[0]?.x ?? 0); dy = newY - (draggedObj.points[0]?.y ?? 0);
+            } else {
+              dx = newX - draggedObj.x; dy = newY - draggedObj.y;
             }
-            if (obj.type === 'path') {
-              const dx = newX - (obj.points[0]?.x ?? 0);
-              const dy = newY - (obj.points[0]?.y ?? 0);
-              return { ...obj, points: obj.points.map(p => ({ x: p.x + dx, y: p.y + dy })) };
+
+            // If dragging a frame, find children fully contained inside it
+            const frameChildIds = new Set();
+            if (draggedObj.type === 'frame') {
+              const fb = getObjBounds(draggedObj);
+              for (const o of prev) {
+                if (o.id === draggedId || o.type === 'connector') continue;
+                const ob = getObjBounds(o);
+                if (ob.x >= fb.x && ob.y >= fb.y && ob.x + ob.w <= fb.x + fb.w && ob.y + ob.h <= fb.y + fb.h) {
+                  frameChildIds.add(o.id);
+                }
+              }
             }
-            return { ...obj, x: newX, y: newY };
-          }));
+
+            return prev.map(obj => {
+              const isChild = frameChildIds.has(obj.id);
+              if (obj.id !== draggedId && !isChild) return obj;
+              if (obj.type === 'line' || obj.type === 'arrow') {
+                return { ...obj, x1: obj.x1 + dx, y1: obj.y1 + dy, x2: obj.x2 + dx, y2: obj.y2 + dy };
+              }
+              if (obj.type === 'path') {
+                return { ...obj, points: obj.points.map(p => ({ x: p.x + dx, y: p.y + dy })) };
+              }
+              return { ...obj, x: obj.x + dx, y: obj.y + dy };
+            });
+          });
         }
       }
     });
@@ -1150,6 +1192,7 @@ The topic is optional — omit it if not specified. The template is placed autom
             width: w > 10 ? w : defaultW, height: h > 10 ? h : defaultH,
           };
           setBoardObjects(prev => [...prev, n]);
+          setSelectedIds([n.id]); setActiveTool('select');
         } else {
           const n = {
             id: nextId.current++, type: 'frame', title: 'Frame',
@@ -1157,6 +1200,7 @@ The topic is optional — omit it if not specified. The template is placed autom
             width: w > 10 ? w : 400, height: h > 10 ? h : 300,
           };
           setBoardObjects(prev => [...prev, n]);
+          setSelectedIds([n.id]); setActiveTool('select');
         }
         setLineStart(null); setLineEnd(null);
       }
@@ -1165,10 +1209,11 @@ The topic is optional — omit it if not specified. The template is placed autom
       const pt = screenToBoard(e);
       if (pt) {
         const CONNECTABLE = ['stickyNote', 'shape', 'text', 'frame', 'comment'];
+        const CONN_PAD = 25;
         const targetObj = boardObjects.find(o => {
           if (o.id === connectingFrom.objId || !CONNECTABLE.includes(o.type)) return false;
           const b = getObjBounds(o);
-          return pt.x >= b.x && pt.x <= b.x + b.w && pt.y >= b.y && pt.y <= b.y + b.h;
+          return pt.x >= b.x - CONN_PAD && pt.x <= b.x + b.w + CONN_PAD && pt.y >= b.y - CONN_PAD && pt.y <= b.y + b.h + CONN_PAD;
         });
         if (targetObj) {
           const toAnchor = getNearestAnchor(targetObj, pt.x, pt.y);
