@@ -71,7 +71,7 @@ export default function ZoomControls({
           onClick={zoomOut}
           title="Zoom out"
           style={{
-            width: '36px', height: '36px',
+            width: '30px', height: '30px',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             background: 'none', border: 'none',
             borderRight: `1px solid ${theme.borderLight}`,
@@ -80,15 +80,15 @@ export default function ZoomControls({
           onMouseEnter={e => e.currentTarget.style.background = theme.surfaceHover}
           onMouseLeave={e => e.currentTarget.style.background = 'none'}
         >
-          <Minus size={16} />
+          <Minus size={14} />
         </button>
         <button
           onClick={() => setShowZoomMenu(prev => !prev)}
           title="Zoom options"
           style={{
-            padding: '0 12px', height: '36px',
+            padding: '0 10px', height: '30px',
             background: showZoomMenu ? (darkMode ? 'rgba(102,126,234,0.15)' : '#f0f4ff') : 'none',
-            border: 'none', cursor: 'pointer', fontSize: '13px', fontWeight: '600',
+            border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: '600',
             color: showZoomMenu ? '#667eea' : theme.text,
             minWidth: '58px', letterSpacing: '-0.3px',
           }}
@@ -101,7 +101,7 @@ export default function ZoomControls({
           onClick={zoomIn}
           title="Zoom in"
           style={{
-            width: '36px', height: '36px',
+            width: '30px', height: '30px',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             background: 'none', border: 'none',
             borderLeft: `1px solid ${theme.borderLight}`,
@@ -110,7 +110,7 @@ export default function ZoomControls({
           onMouseEnter={e => e.currentTarget.style.background = theme.surfaceHover}
           onMouseLeave={e => e.currentTarget.style.background = 'none'}
         >
-          <Plus size={16} />
+          <Plus size={14} />
         </button>
       </div>
     </div>

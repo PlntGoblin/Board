@@ -2,12 +2,12 @@ import { DRAW_COLORS } from '../../lib/theme';
 
 export default function DrawingPanel({ drawColor, setDrawColor, strokeWidth, setStrokeWidth, darkMode, theme }) {
   return (
-    <div style={{
+    <div onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} style={{
       position: 'absolute', left: '88px', top: '16px',
       background: theme.surface, borderRadius: '12px',
       boxShadow: darkMode ? '0 8px 24px rgba(0,0,0,0.5)' : '0 8px 24px rgba(0,0,0,0.12)',
       padding: '10px', display: 'flex', flexDirection: 'column', gap: '6px',
-      zIndex: 10, animation: 'popIn 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
+      zIndex: 9, animation: 'popIn 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
     }}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '6px' }}>
         {DRAW_COLORS.map(color => (

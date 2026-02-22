@@ -271,6 +271,44 @@ export default function Dashboard() {
         { id: 9, type: 'stickyNote', x: 740, y: 240, width: 240, height: 100, color: 'blue', text: '' },
       ],
     },
+    {
+      name: 'User Journey',
+      icon: '🗺️',
+      desc: 'Map out the user experience flow',
+      color: '#f472b6',
+      objects: [
+        { id: 1, type: 'frame', x: 50, y: 50, width: 200, height: 350, title: 'Awareness' },
+        { id: 2, type: 'frame', x: 280, y: 50, width: 200, height: 350, title: 'Consideration' },
+        { id: 3, type: 'frame', x: 510, y: 50, width: 200, height: 350, title: 'Decision' },
+        { id: 4, type: 'frame', x: 740, y: 50, width: 200, height: 350, title: 'Onboarding' },
+        { id: 5, type: 'frame', x: 970, y: 50, width: 200, height: 350, title: 'Retention' },
+        { id: 6, type: 'stickyNote', x: 70, y: 120, width: 160, height: 90, color: 'pink', text: '' },
+        { id: 7, type: 'stickyNote', x: 300, y: 120, width: 160, height: 90, color: 'purple', text: '' },
+        { id: 8, type: 'stickyNote', x: 530, y: 120, width: 160, height: 90, color: 'blue', text: '' },
+        { id: 9, type: 'stickyNote', x: 760, y: 120, width: 160, height: 90, color: 'green', text: '' },
+        { id: 10, type: 'stickyNote', x: 990, y: 120, width: 160, height: 90, color: 'yellow', text: '' },
+        { id: 11, type: 'arrow', x1: 250, y1: 225, x2: 280, y2: 225, color: '#8B8FA3', strokeWidth: 2 },
+        { id: 12, type: 'arrow', x1: 480, y1: 225, x2: 510, y2: 225, color: '#8B8FA3', strokeWidth: 2 },
+        { id: 13, type: 'arrow', x1: 710, y1: 225, x2: 740, y2: 225, color: '#8B8FA3', strokeWidth: 2 },
+        { id: 14, type: 'arrow', x1: 940, y1: 225, x2: 970, y2: 225, color: '#8B8FA3', strokeWidth: 2 },
+      ],
+    },
+    {
+      name: 'Pros & Cons',
+      icon: '⚖️',
+      desc: 'Weigh options side by side',
+      color: '#fb923c',
+      objects: [
+        { id: 1, type: 'frame', x: 50, y: 50, width: 350, height: 450, title: 'Pros ✅' },
+        { id: 2, type: 'frame', x: 430, y: 50, width: 350, height: 450, title: 'Cons ❌' },
+        { id: 3, type: 'stickyNote', x: 80, y: 120, width: 290, height: 80, color: 'green', text: '' },
+        { id: 4, type: 'stickyNote', x: 80, y: 220, width: 290, height: 80, color: 'green', text: '' },
+        { id: 5, type: 'stickyNote', x: 80, y: 320, width: 290, height: 80, color: 'green', text: '' },
+        { id: 6, type: 'stickyNote', x: 460, y: 120, width: 290, height: 80, color: 'pink', text: '' },
+        { id: 7, type: 'stickyNote', x: 460, y: 220, width: 290, height: 80, color: 'pink', text: '' },
+        { id: 8, type: 'stickyNote', x: 460, y: 320, width: 290, height: 80, color: 'pink', text: '' },
+      ],
+    },
   ];
 
   const handleNewFromTemplate = async (template) => {
@@ -783,7 +821,12 @@ export default function Dashboard() {
         <div style={{ flex: 1, padding: '32px', overflow: 'auto' }}>
           {/* Templates Section */}
           {!loading && selectedNav === 'home' && (
-            <div style={{ marginBottom: '32px' }}>
+            <div style={{
+              marginBottom: '32px',
+              border: '1px solid rgba(255,255,255,0.08)',
+              borderRadius: '16px',
+              padding: '24px',
+            }}>
               <h3 style={{
                 margin: '0 0 16px 0',
                 fontSize: '13px',
@@ -796,8 +839,11 @@ export default function Dashboard() {
               </h3>
               <div style={{
                 display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
+                gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))',
+                gridTemplateRows: '1fr',
+                gridAutoRows: '0',
                 gap: '12px',
+                overflow: 'hidden',
               }}>
                 {TEMPLATES.map((tpl) => (
                   <button

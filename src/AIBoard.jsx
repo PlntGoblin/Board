@@ -470,7 +470,7 @@ const AIBoard = () => {
         return { count: matches.length, objects: matches.map(o => ({ id: o.id, type: o.type, ...(o.text ? { text: o.text.slice(0, 40) } : {}), ...(o.title ? { title: o.title.slice(0, 40) } : {}), ...(o.color ? { color: o.color } : {}), x: Math.round(o.x), y: Math.round(o.y) })) };
       }
       case "getBoardState":
-        return { objects: boardObjects.map(({ id, type, x, y, width, height, color, text, title, shapeType, emoji, rotation, x1, y1, x2, y2, fromId, toId }) => ({ id, type, x, y, width, height, color, text, title, shapeType, ...(emoji ? { emoji } : {}), ...(rotation ? { rotation } : {}), ...(x1 !== undefined ? { x1, y1, x2, y2 } : {}), ...(fromId !== undefined ? { fromId, toId } : {}) })) };
+        return { objects: boardObjects.map(({ id, type, x, y, width, height, color, text, title, shapeType, emoji, rotation, x1, y1, x2, y2, cx, cy, fromId, toId }) => ({ id, type, x, y, width, height, color, text, title, shapeType, ...(emoji ? { emoji } : {}), ...(rotation ? { rotation } : {}), ...(x1 !== undefined ? { x1, y1, x2, y2 } : {}), ...(cx != null ? { cx, cy } : {}), ...(fromId !== undefined ? { fromId, toId } : {}) })) };
       case "zoomToFit": {
         const targets = toolInput.objectIds?.length
           ? boardObjects.filter(obj => toolInput.objectIds.includes(obj.id))
@@ -1151,10 +1151,12 @@ CRITICAL: Always batch ALL tool calls in ONE response. Never split across multip
         if (selectedIds.length > 1 && selectedIds.includes(draggedId)) {
           const draggedObj = boardObjects.find(o => o.id === draggedId);
           if (draggedObj) {
-            const dx = newX - draggedObj.x, dy = newY - draggedObj.y;
+            const objX = draggedObj.x ?? draggedObj.x1 ?? (draggedObj.points?.[0]?.x || 0);
+            const objY = draggedObj.y ?? draggedObj.y1 ?? (draggedObj.points?.[0]?.y || 0);
+            const dx = newX - objX, dy = newY - objY;
             setBoardObjects(prev => prev.map(obj => {
               if (!selectedIds.includes(obj.id)) return obj;
-              if (obj.type === 'line' || obj.type === 'arrow') return { ...obj, x1: obj.x1 + dx, y1: obj.y1 + dy, x2: obj.x2 + dx, y2: obj.y2 + dy };
+              if (obj.type === 'line' || obj.type === 'arrow') return { ...obj, x1: obj.x1 + dx, y1: obj.y1 + dy, x2: obj.x2 + dx, y2: obj.y2 + dy, ...(obj.cx != null ? { cx: obj.cx + dx, cy: obj.cy + dy } : {}) };
               if (obj.type === 'path') return { ...obj, points: obj.points.map(p => ({ x: p.x + dx, y: p.y + dy })) };
               return { ...obj, x: obj.x + dx, y: obj.y + dy };
             }));
@@ -1191,7 +1193,7 @@ CRITICAL: Always batch ALL tool calls in ONE response. Never split across multip
               const isChild = frameChildIds.has(obj.id);
               if (obj.id !== draggedId && !isChild) return obj;
               if (obj.type === 'line' || obj.type === 'arrow') {
-                return { ...obj, x1: obj.x1 + dx, y1: obj.y1 + dy, x2: obj.x2 + dx, y2: obj.y2 + dy };
+                return { ...obj, x1: obj.x1 + dx, y1: obj.y1 + dy, x2: obj.x2 + dx, y2: obj.y2 + dy, ...(obj.cx != null ? { cx: obj.cx + dx, cy: obj.cy + dy } : {}) };
               }
               if (obj.type === 'path') {
                 return { ...obj, points: obj.points.map(p => ({ x: p.x + dx, y: p.y + dy })) };
@@ -1212,8 +1214,13 @@ CRITICAL: Always batch ALL tool calls in ONE response. Never split across multip
     if (rafId.current) { cancelAnimationFrame(rafId.current); rafId.current = null; }
 
     if (selectionBox) {
-      const sx = Math.min(selectionBox.startX, selectionBox.endX), sy = Math.min(selectionBox.startY, selectionBox.endY);
-      const sw = Math.abs(selectionBox.endX - selectionBox.startX), sh = Math.abs(selectionBox.endY - selectionBox.startY);
+      // Use the current mouse position for the final box so we don't lose
+      // the last RAF-deferred update that was just cancelled above
+      const finalPt = screenToBoard(e);
+      const endX = finalPt ? finalPt.x : selectionBox.endX;
+      const endY = finalPt ? finalPt.y : selectionBox.endY;
+      const sx = Math.min(selectionBox.startX, endX), sy = Math.min(selectionBox.startY, endY);
+      const sw = Math.abs(endX - selectionBox.startX), sh = Math.abs(endY - selectionBox.startY);
       if (sw > 5 || sh > 5) {
         const box = { x: sx, y: sy, w: sw, h: sh };
         const hits = boardObjects.filter(obj => boxesIntersect(getObjBounds(obj), box)).map(obj => obj.id);
@@ -1232,8 +1239,11 @@ CRITICAL: Always batch ALL tool calls in ONE response. Never split across multip
     if (lineStart && (activeTool === 'line' || activeTool === 'arrow')) {
       const pt = screenToBoard(e);
       if (pt) {
-        setBoardObjects(prev => [...prev, { id: nextId.current++, type: activeTool, x1: lineStart.x, y1: lineStart.y, x2: pt.x, y2: pt.y, color: drawColor, strokeWidth }]);
+        const newId = nextId.current++;
+        setBoardObjects(prev => [...prev, { id: newId, type: activeTool, x1: lineStart.x, y1: lineStart.y, x2: pt.x, y2: pt.y, color: drawColor, strokeWidth }]);
+        setSelectedId(newId); setSelectedIds([newId]);
         setLineStart(null); setLineEnd(null);
+        setActiveTool('select');
       }
     }
     if (lineStart && (activeTool === 'shape' || activeTool === 'frame')) {
@@ -1373,7 +1383,7 @@ CRITICAL: Always batch ALL tool calls in ONE response. Never split across multip
       const clone = { ...o };
       delete clone.id;
       if (clone.x != null) { clone._rx = clone.x - baseX; clone._ry = clone.y - baseY; }
-      else if (clone.x1 != null) { clone._rx = clone.x1 - baseX; clone._ry = clone.y1 - baseY; clone._rx2 = clone.x2 - baseX; clone._ry2 = clone.y2 - baseY; }
+      else if (clone.x1 != null) { clone._rx = clone.x1 - baseX; clone._ry = clone.y1 - baseY; clone._rx2 = clone.x2 - baseX; clone._ry2 = clone.y2 - baseY; if (clone.cx != null) { clone._rcx = clone.cx - baseX; clone._rcy = clone.cy - baseY; } }
       if (clone.points) { clone._rpts = clone.points.map(p => ({ x: p.x - baseX, y: p.y - baseY })); }
       return clone;
     }));
@@ -1390,9 +1400,9 @@ CRITICAL: Always batch ALL tool calls in ONE response. Never split across multip
       if (c.id) idMap[c.id] = newId; // won't exist since we stripped, but safety
       const obj = { ...c, id: newId };
       if (obj._rx != null) { obj.x = pasteX + obj._rx; obj.y = pasteY + obj._ry; }
-      if (obj._rx2 != null) { obj.x1 = pasteX + obj._rx; obj.y1 = pasteY + obj._ry; obj.x2 = pasteX + obj._rx2; obj.y2 = pasteY + obj._ry2; }
+      if (obj._rx2 != null) { obj.x1 = pasteX + obj._rx; obj.y1 = pasteY + obj._ry; obj.x2 = pasteX + obj._rx2; obj.y2 = pasteY + obj._ry2; if (obj._rcx != null) { obj.cx = pasteX + obj._rcx; obj.cy = pasteY + obj._rcy; } }
       if (obj._rpts) { obj.points = obj._rpts.map(p => ({ x: pasteX + p.x, y: pasteY + p.y })); }
-      delete obj._rx; delete obj._ry; delete obj._rx2; delete obj._ry2; delete obj._rpts;
+      delete obj._rx; delete obj._ry; delete obj._rx2; delete obj._ry2; delete obj._rcx; delete obj._rcy; delete obj._rpts;
       return obj;
     });
     setBoardObjects(prev => [...prev, ...newObjs]);
@@ -1475,6 +1485,7 @@ CRITICAL: Always batch ALL tool calls in ONE response. Never split across multip
   const CREATION_TOOLS = ['text', 'sticky', 'shape', 'frame', 'pen', 'arrow', 'line', 'eraser'];
   const handleToolChange = useCallback((tool) => {
     setActiveTool(tool);
+    setShowWelcome(false);
     if (CREATION_TOOLS.includes(tool)) {
       setSelectedId(null);
       setSelectedIds([]);
@@ -1759,7 +1770,7 @@ CRITICAL: Always batch ALL tool calls in ONE response. Never split across multip
                 placeholder="I want to create..."
                 value={aiInput}
                 onChange={(e) => setAiInput(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter' && aiInput.trim()) { setShowAIChat(true); processAICommand(); } }}
+                onKeyDown={(e) => { if (e.key === 'Enter' && aiInput.trim()) { setShowWelcome(false); setShowAIChat(true); processAICommand(); } }}
                 style={{
                   flex: 1, border: 'none', outline: 'none', background: 'transparent',
                   fontSize: '14px', color: theme.text, padding: '6px',
@@ -1767,7 +1778,7 @@ CRITICAL: Always batch ALL tool calls in ONE response. Never split across multip
                 }}
               />
               <button
-                onClick={() => { if (aiInput.trim()) { setShowAIChat(true); processAICommand(); } }}
+                onClick={() => { if (aiInput.trim()) { setShowWelcome(false); setShowAIChat(true); processAICommand(); } }}
                 disabled={!aiInput.trim()}
                 style={{
                   width: '32px', height: '32px', borderRadius: '8px', border: 'none',
@@ -1786,6 +1797,7 @@ CRITICAL: Always batch ALL tool calls in ONE response. Never split across multip
                 <button
                   key={qp.label}
                   onClick={() => {
+                    setShowWelcome(false);
                     setShowAIChat(true);
                     setQuickPromptPrefix(qp.prefix);
                     setConversationHistory(prev => [...prev, { role: 'assistant', content: qp.followUp() }]);
@@ -1884,16 +1896,26 @@ CRITICAL: Always batch ALL tool calls in ONE response. Never split across multip
             {/* Arrow/line tool: live preview while dragging */}
             {lineStart && lineEnd && (activeTool === 'arrow' || activeTool === 'line') && (
               <svg style={{ position: 'absolute', top: 0, left: 0, width: '5000px', height: '5000px', overflow: 'visible', pointerEvents: 'none', zIndex: 201 }}>
-                {activeTool === 'arrow' && (
-                  <defs>
-                    <marker id="preview-arrowhead" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
-                      <polygon points="0 0, 12 6, 0 12" fill={drawColor} opacity={0.7} />
-                    </marker>
-                  </defs>
-                )}
-                <line
-                  x1={lineStart.x} y1={lineStart.y} x2={lineEnd.x} y2={lineEnd.y}
-                  stroke={drawColor} strokeWidth={strokeWidth} strokeLinecap="round"
+                {activeTool === 'arrow' && (() => {
+                  const cw = Math.max(14, 6 + strokeWidth * 2.5);
+                  const ch = Math.max(16, 8 + strokeWidth * 2.5);
+                  const cs = Math.max(2.5, strokeWidth * 0.9);
+                  return (
+                    <defs>
+                      <marker id="preview-arrowhead" markerUnits="userSpaceOnUse"
+                        markerWidth={cw + cs} markerHeight={ch + cs}
+                        viewBox={`${-cs} ${-cs} ${cw + cs * 2} ${ch + cs * 2}`}
+                        refX={cw} refY={ch / 2} orient="auto" overflow="visible">
+                        <path d={`M 0 0 L ${cw} ${ch / 2} L 0 ${ch}`}
+                          fill="none" stroke={drawColor} strokeWidth={cs}
+                          strokeLinecap="round" strokeLinejoin="round" opacity={0.7} />
+                      </marker>
+                    </defs>
+                  );
+                })()}
+                <path
+                  d={`M ${lineStart.x} ${lineStart.y} L ${lineEnd.x} ${lineEnd.y}`}
+                  stroke={drawColor} strokeWidth={strokeWidth} strokeLinecap="round" fill="none"
                   opacity={0.7}
                   markerEnd={activeTool === 'arrow' ? 'url(#preview-arrowhead)' : undefined}
                 />

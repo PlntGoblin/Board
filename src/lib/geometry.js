@@ -29,9 +29,15 @@ export function getObjBounds(obj) {
     }
     return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
   }
-  if (obj.type === 'line' || obj.type === 'arrow') {
-    const x = Math.min(obj.x1, obj.x2), y = Math.min(obj.y1, obj.y2);
-    return { x, y, w: Math.abs(obj.x2 - obj.x1), h: Math.abs(obj.y2 - obj.y1) };
+  if (obj.type === 'line' || obj.type === 'arrow' || obj.type === 'connector') {
+    let minX = Math.min(obj.x1, obj.x2), minY = Math.min(obj.y1, obj.y2);
+    let maxX = Math.max(obj.x1, obj.x2), maxY = Math.max(obj.y1, obj.y2);
+    if (obj.cx != null) { minX = Math.min(minX, obj.cx); minY = Math.min(minY, obj.cy); maxX = Math.max(maxX, obj.cx); maxY = Math.max(maxY, obj.cy); }
+    // Pad thin/zero-dimension bounds so marquee selection always works
+    const pad = 6;
+    if (maxX - minX < pad) { minX -= pad; maxX += pad; }
+    if (maxY - minY < pad) { minY -= pad; maxY += pad; }
+    return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
   }
   return { x: obj.x || 0, y: obj.y || 0, w: obj.width || 100, h: obj.height || 100 };
 }

@@ -14,6 +14,29 @@ function formatResponse(text) {
   });
 }
 
+const SUGGESTION_POOL = [
+  'Add a yellow sticky note that says "User Research"',
+  'Create a blue rectangle at position 100, 200',
+  'Add a frame called "Sprint Planning"',
+  'Move all the pink sticky notes to the right side',
+  'Change the sticky note color to green',
+  'Arrange these sticky notes in a grid',
+  'Create a 2x3 grid of sticky notes for pros and cons',
+  'Space these elements evenly',
+  'Create 3 yellow sticky notes with project ideas',
+  'Arrange all sticky notes in a 2x2 grid',
+  'Create a SWOT analysis with 4 frames',
+  'Move all pink notes to the right',
+  'Add a text label that says "Q1 Goals"',
+  'Create a Kanban board with 3 columns',
+  'Make all sticky notes the same size',
+  'Add an arrow from the first shape to the second',
+  'Create a brainstorm layout with a center topic',
+  'Group all blue sticky notes together',
+  'Resize the frame to 400 by 300',
+  'Add a diamond shape for a decision point',
+];
+
 const THINKING_PHRASES = [
   'Mission Control is evaluating…',
   'Running diagnostics…',
@@ -50,6 +73,40 @@ export default function AIChat({
     }
   }, [conversationHistory, aiResponse, isProcessing]);
 
+  // Rotating suggestions — one at a time, with per-item fade
+  const [suggestions, setSuggestions] = useState(() => {
+    const shuffled = [...SUGGESTION_POOL].sort(() => Math.random() - 0.5);
+    return shuffled.slice(0, 4);
+  });
+  const [fadingIdx, setFadingIdx] = useState(-1);
+  const lastSwappedRef = useRef(-1);
+
+  useEffect(() => {
+    if (!showAIChat) return;
+    let timeout;
+    const swap = () => {
+      // Pick a random slot that isn't the one we just swapped
+      let idx;
+      do { idx = Math.floor(Math.random() * 4); } while (idx === lastSwappedRef.current);
+      lastSwappedRef.current = idx;
+      setFadingIdx(idx);
+      setTimeout(() => {
+        setSuggestions(prev => {
+          const others = prev.filter((_, i) => i !== idx);
+          const available = SUGGESTION_POOL.filter(s => !others.includes(s) && s !== prev[idx]);
+          const pick = available[Math.floor(Math.random() * available.length)];
+          const next = [...prev];
+          next[idx] = pick;
+          return next;
+        });
+        setFadingIdx(-1);
+      }, 600);
+      timeout = setTimeout(swap, 4000 + Math.random() * 4000);
+    };
+    timeout = setTimeout(swap, 4000 + Math.random() * 4000);
+    return () => clearTimeout(timeout);
+  }, [showAIChat]);
+
   // Visible messages: filter out system messages
   const visibleMessages = (conversationHistory || []).filter(m => m.role === 'user' || m.role === 'assistant');
   const hasHistory = visibleMessages.length > 0;
@@ -84,11 +141,12 @@ export default function AIChat({
       {showAIChat && (
         <div style={{
           position: 'absolute', top: '68px', right: '0', width: '400px', maxWidth: '90vw',
-          background: 'rgba(12, 14, 28, 0.92)',
-          backdropFilter: 'blur(24px) saturate(1.4)',
-          border: '1px solid rgba(102, 126, 234, 0.25)',
+          background: 'rgba(15, 22, 38, 0.85)',
+          backdropFilter: 'blur(12px)',
+          WebkitBackdropFilter: 'blur(12px)',
+          border: '1px solid rgba(255, 255, 255, 0.08)',
           borderRadius: '16px',
-          boxShadow: '0 0 1px rgba(102, 126, 234, 0.4), 0 8px 40px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.05)',
+          boxShadow: '0 8px 40px rgba(0, 0, 0, 0.6)',
           padding: '20px', animation: 'slideUp 0.3s ease-out',
           display: 'flex', flexDirection: 'column',
           maxHeight: '70vh',
@@ -133,16 +191,19 @@ export default function AIChat({
               75% { transform: translateY(8px) rotate(-10deg); }
               100% { transform: translateY(0px) rotate(0deg); }
             }
+            @keyframes suggestion-float {
+              0%, 100% { transform: translateY(0px); }
+              50% { transform: translateY(-3px); }
+            }
           `}</style>
 
           {/* Header */}
           <div style={{
             textAlign: 'center', padding: '8px 0 16px', marginBottom: '12px',
-            borderBottom: '1px solid rgba(102, 126, 234, 0.15)',
             position: 'relative', overflow: 'hidden', flexShrink: 0,
           }}>
             <div style={{ position: 'absolute', inset: 0, opacity: 0.4, background: 'radial-gradient(ellipse at 50% 0%, rgba(102, 126, 234, 0.3) 0%, transparent 70%)', pointerEvents: 'none' }} />
-            <div style={{ fontSize: '28px', marginBottom: '4px', filter: 'drop-shadow(0 0 8px rgba(102, 126, 234, 0.6))', animation: 'rocket-float 3s ease-in-out infinite' }}>🧑‍🚀</div>
+            <div style={{ fontSize: '28px', marginBottom: '4px', filter: 'drop-shadow(0 0 8px rgba(102, 126, 234, 0.6))' }}>🧑‍🚀</div>
             <div style={{ fontSize: '14px', fontWeight: '700', color: '#c4d0ff', letterSpacing: '1.5px', textTransform: 'uppercase' }}>Mission Control</div>
             <div style={{ fontSize: '11px', color: 'rgba(160, 175, 220, 0.55)', marginTop: '2px' }}>Tell me what to create or arrange</div>
           </div>
@@ -172,12 +233,7 @@ export default function AIChat({
                 <div style={{ fontSize: '10px', color: 'rgba(160, 175, 220, 0.5)', marginBottom: '8px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '1px' }}>
                   Suggestions
                 </div>
-                {[
-                  'Create 3 yellow sticky notes with project ideas',
-                  'Arrange all sticky notes in a 2x2 grid',
-                  'Create a SWOT analysis with 4 frames',
-                  'Move all pink notes to the right',
-                ].map((suggestion, idx) => (
+                {suggestions.map((suggestion, idx) => (
                   <button
                     key={idx}
                     onClick={() => { setAiInput(suggestion); setTimeout(() => processAICommand(), 0); }}
@@ -187,7 +243,10 @@ export default function AIChat({
                       border: '1px solid rgba(102, 126, 234, 0.1)',
                       borderRadius: '8px', color: 'rgba(200, 210, 240, 0.85)', fontSize: '12px',
                       textAlign: 'left', cursor: 'pointer',
-                      marginBottom: idx < 3 ? '6px' : '0', transition: 'all 0.2s',
+                      marginBottom: idx < 3 ? '6px' : '0',
+                      transition: 'opacity 0.6s ease-in-out, background 0.2s, border-color 0.2s, color 0.2s',
+                      opacity: fadingIdx === idx ? 0 : 1,
+                      animation: `suggestion-float ${3 + idx * 0.5}s ease-in-out ${idx * 0.4}s infinite`,
                     }}
                     onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(102, 126, 234, 0.15)'; e.currentTarget.style.borderColor = 'rgba(102, 126, 234, 0.3)'; e.currentTarget.style.color = '#c4d0ff'; }}
                     onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(102, 126, 234, 0.06)'; e.currentTarget.style.borderColor = 'rgba(102, 126, 234, 0.1)'; e.currentTarget.style.color = 'rgba(200, 210, 240, 0.85)'; }}

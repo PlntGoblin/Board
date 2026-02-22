@@ -69,8 +69,8 @@ export default memo(function BoardObject({
   }
 
   if (obj.type === 'path') return <PathDrawing obj={obj} isSelected={isSelected} handleMouseDown={handleMouseDown} updateProp={updateProp} isMultiSelected={isMultiSelected} onContextMenu={onContextMenu} />;
-  if (obj.type === 'line') return <LineDrawing obj={obj} isSelected={isSelected} handleMouseDown={handleMouseDown} updateProp={updateProp} isMultiSelected={isMultiSelected} onContextMenu={onContextMenu} />;
-  if (obj.type === 'arrow') return <ArrowDrawing obj={obj} isSelected={isSelected} handleMouseDown={handleMouseDown} updateProp={updateProp} isMultiSelected={isMultiSelected} onContextMenu={onContextMenu} />;
+  if (obj.type === 'line') return <LineDrawing obj={obj} isSelected={isSelected} handleMouseDown={handleMouseDown} updateProp={updateProp} isMultiSelected={isMultiSelected} onContextMenu={onContextMenu} setBoardObjects={setBoardObjects} />;
+  if (obj.type === 'arrow') return <ArrowDrawing obj={obj} isSelected={isSelected} handleMouseDown={handleMouseDown} updateProp={updateProp} isMultiSelected={isMultiSelected} onContextMenu={onContextMenu} setBoardObjects={setBoardObjects} />;
   if (obj.type === 'connector') return <ConnectorObject obj={obj} isSelected={isSelected} handleMouseDown={handleMouseDown} updateProp={updateProp} isMultiSelected={isMultiSelected} onContextMenu={onContextMenu} />;
 
   return null;
@@ -884,7 +884,7 @@ function DrawingColorToolbar({ obj, midX, midY, updateProp }) {
     <div
       onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); }}
       style={{
-        position: 'absolute', left: midX, top: midY - 40,
+        position: 'absolute', left: midX, top: midY - 60,
         transform: 'translateX(-50%)',
         display: 'flex', alignItems: 'center', gap: '4px',
         background: 'rgba(30,30,40,0.95)', backdropFilter: 'blur(12px)',
@@ -987,7 +987,7 @@ function PathDrawing({ obj, isSelected, handleMouseDown, updateProp, isMultiSele
   return (
     <>
       <svg key={obj.id} style={SVG_STYLE_INTERACTIVE}>
-        <path d={d} stroke="transparent" strokeWidth={Math.max(obj.strokeWidth || 3, 16)} fill="none"
+        <path d={d} stroke="transparent" strokeWidth={Math.max(obj.strokeWidth || 3, 30)} fill="none"
           strokeLinecap="round" strokeLinejoin="round" style={{ cursor: 'pointer', pointerEvents: 'auto' }}
           onMouseDown={(e) => handleMouseDown(e, obj.id)} onContextMenu={(e) => onContextMenu?.(e, obj.id)} />
         <path d={d} stroke={obj.color} strokeWidth={obj.strokeWidth} fill="none"
@@ -998,46 +998,144 @@ function PathDrawing({ obj, isSelected, handleMouseDown, updateProp, isMultiSele
   );
 }
 
-function LineDrawing({ obj, isSelected, handleMouseDown, updateProp, isMultiSelected, onContextMenu }) {
+// Convert screen (clientX/Y) to SVG coordinates using the SVG's own transform matrix
+function screenToSVG(svg, clientX, clientY) {
+  const ctm = svg.getScreenCTM();
+  if (!ctm) return null;
+  const pt = new DOMPoint(clientX, clientY);
+  const svgPt = pt.matrixTransform(ctm.inverse());
+  return { x: svgPt.x, y: svgPt.y };
+}
+
+// Endpoint handle — grab one end, the opposite stays anchored, this end follows the cursor
+function EndpointHandle({ x, y, obj, setBoardObjects, endpoint }) {
+  const startDrag = (e) => {
+    e.stopPropagation();
+    e.preventDefault();
+    const svg = e.currentTarget.ownerSVGElement;
+    if (!svg) return;
+    const objId = obj.id;
+    const onMove = (ev) => {
+      const pt = screenToSVG(svg, ev.clientX, ev.clientY);
+      if (!pt) return;
+      setBoardObjects(prev => prev.map(o => {
+        if (o.id !== objId) return o;
+        if (endpoint === 'start') return { ...o, x1: pt.x, y1: pt.y };
+        return { ...o, x2: pt.x, y2: pt.y };
+      }));
+    };
+    const onUp = () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  };
+  return (
+    <circle cx={x} cy={y} r={5} fill="white" stroke="#2196F3" strokeWidth={2}
+      style={{ cursor: 'grab', pointerEvents: 'auto' }} onMouseDown={startDrag} />
+  );
+}
+
+// Bend handle — dragging bends the line. The handle shows ON the curve (t=0.5),
+// and we reverse-compute the control point: CP = 2*curvePoint - 0.5*P0 - 0.5*P1
+function BendHandle({ x, y, obj, setBoardObjects }) {
+  const startDrag = (e) => {
+    e.stopPropagation();
+    e.preventDefault();
+    const svg = e.currentTarget.ownerSVGElement;
+    if (!svg) return;
+    const objId = obj.id;
+    const onMove = (ev) => {
+      const pt = screenToSVG(svg, ev.clientX, ev.clientY);
+      if (!pt) return;
+      // pt is where the user wants the curve to pass through (at t=0.5)
+      // Reverse-solve for the quadratic bezier control point
+      setBoardObjects(prev => prev.map(o => {
+        if (o.id !== objId) return o;
+        const cpx = 2 * pt.x - 0.5 * o.x1 - 0.5 * o.x2;
+        const cpy = 2 * pt.y - 0.5 * o.y1 - 0.5 * o.y2;
+        return { ...o, cx: cpx, cy: cpy };
+      }));
+    };
+    const onUp = () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  };
+  return (
+    <circle cx={x} cy={y} r={6} fill="#e3f2fd" stroke="#2196F3" strokeWidth={2}
+      style={{ cursor: 'grab', pointerEvents: 'auto' }} onMouseDown={startDrag} />
+  );
+}
+
+function LineDrawing({ obj, isSelected, handleMouseDown, updateProp, isMultiSelected, onContextMenu, setBoardObjects }) {
   const midX = (obj.x1 + obj.x2) / 2;
   const midY = (obj.y1 + obj.y2) / 2;
+  const hasBend = obj.cx != null;
+  const pathD = hasBend ? `M ${obj.x1} ${obj.y1} Q ${obj.cx} ${obj.cy} ${obj.x2} ${obj.y2}` : `M ${obj.x1} ${obj.y1} L ${obj.x2} ${obj.y2}`;
+  // BendHandle position: point ON the curve at t=0.5 (not the control point)
+  const handleX = hasBend ? 0.25 * obj.x1 + 0.5 * obj.cx + 0.25 * obj.x2 : midX;
+  const handleY = hasBend ? 0.25 * obj.y1 + 0.5 * obj.cy + 0.25 * obj.y2 : midY;
   return (
     <>
       <svg key={obj.id} style={SVG_STYLE_INTERACTIVE}>
-        <line x1={obj.x1} y1={obj.y1} x2={obj.x2} y2={obj.y2}
-          stroke="transparent" strokeWidth={Math.max(obj.strokeWidth || 3, 16)}
+        <path d={pathD}
+          stroke="transparent" strokeWidth={Math.max(obj.strokeWidth || 3, 30)} fill="none"
           strokeLinecap="round" style={{ cursor: 'pointer', pointerEvents: 'auto' }}
           onMouseDown={(e) => handleMouseDown(e, obj.id)} onContextMenu={(e) => onContextMenu?.(e, obj.id)} />
-        <line x1={obj.x1} y1={obj.y1} x2={obj.x2} y2={obj.y2}
-          stroke={obj.color} strokeWidth={obj.strokeWidth}
+        <path d={pathD}
+          stroke={obj.color} strokeWidth={obj.strokeWidth} fill="none"
           strokeLinecap="round" strokeDasharray={obj.strokeDasharray || 'none'} pointerEvents="none" opacity={obj.opacity ?? 1} />
+        {isSelected && !isMultiSelected && (
+          <>
+            <EndpointHandle x={obj.x1} y={obj.y1} obj={obj} setBoardObjects={setBoardObjects} endpoint="start" />
+            <EndpointHandle x={obj.x2} y={obj.y2} obj={obj} setBoardObjects={setBoardObjects} endpoint="end" />
+            <BendHandle x={handleX} y={handleY} obj={obj} setBoardObjects={setBoardObjects} />
+          </>
+        )}
       </svg>
       {isSelected && !isMultiSelected && <DrawingColorToolbar obj={obj} midX={midX} midY={midY} updateProp={updateProp} />}
     </>
   );
 }
 
-function ArrowDrawing({ obj, isSelected, handleMouseDown, updateProp, isMultiSelected, onContextMenu }) {
-  const arrowSize = 12;
+function ArrowDrawing({ obj, isSelected, handleMouseDown, updateProp, isMultiSelected, onContextMenu, setBoardObjects }) {
   const midX = (obj.x1 + obj.x2) / 2;
   const midY = (obj.y1 + obj.y2) / 2;
+  const hasBend = obj.cx != null;
+  const pathD = hasBend ? `M ${obj.x1} ${obj.y1} Q ${obj.cx} ${obj.cy} ${obj.x2} ${obj.y2}` : `M ${obj.x1} ${obj.y1} L ${obj.x2} ${obj.y2}`;
+  const handleX = hasBend ? 0.25 * obj.x1 + 0.5 * obj.cx + 0.25 * obj.x2 : midX;
+  const handleY = hasBend ? 0.25 * obj.y1 + 0.5 * obj.cy + 0.25 * obj.y2 : midY;
+  const sw = obj.strokeWidth || 3;
+  const chevW = Math.max(14, 6 + sw * 2.5);
+  const chevH = Math.max(16, 8 + sw * 2.5);
+  const chevSw = Math.max(2.5, sw * 0.9);
+  const markerId = `arrowhead-${obj.id}`;
   return (
     <>
       <svg key={obj.id} style={SVG_STYLE_INTERACTIVE}>
         <defs>
-          <marker id={`arrowhead-${obj.id}`} markerWidth={arrowSize} markerHeight={arrowSize}
-            viewBox={`0 0 ${arrowSize} ${arrowSize}`}
-            refX={arrowSize - 1} refY={arrowSize / 2} orient="auto">
-            <path d={`M 1 1 Q ${arrowSize * 0.55} ${arrowSize / 2} ${arrowSize - 1} ${arrowSize / 2} Q ${arrowSize * 0.55} ${arrowSize / 2} 1 ${arrowSize - 1} Q ${arrowSize * 0.2} ${arrowSize / 2} 1 1 Z`} fill={obj.color} />
+          <marker id={markerId} markerUnits="userSpaceOnUse"
+            markerWidth={chevW + chevSw} markerHeight={chevH + chevSw}
+            viewBox={`${-chevSw} ${-chevSw} ${chevW + chevSw * 2} ${chevH + chevSw * 2}`}
+            refX={chevW} refY={chevH / 2} orient="auto" overflow="visible">
+            <path d={`M 0 0 L ${chevW} ${chevH / 2} L 0 ${chevH}`}
+              fill="none" stroke={obj.color} strokeWidth={chevSw}
+              strokeLinecap="round" strokeLinejoin="round" />
           </marker>
         </defs>
-        <line x1={obj.x1} y1={obj.y1} x2={obj.x2} y2={obj.y2}
-          stroke="transparent" strokeWidth={Math.max(obj.strokeWidth || 3, 16)}
+        <path d={pathD}
+          stroke="transparent" strokeWidth={Math.max(sw, 30)} fill="none"
           strokeLinecap="round" style={{ cursor: 'pointer', pointerEvents: 'auto' }}
           onMouseDown={(e) => handleMouseDown(e, obj.id)} onContextMenu={(e) => onContextMenu?.(e, obj.id)} />
-        <line x1={obj.x1} y1={obj.y1} x2={obj.x2} y2={obj.y2}
-          stroke={obj.color} strokeWidth={obj.strokeWidth}
-          strokeLinecap="round" strokeDasharray={obj.strokeDasharray || 'none'} markerEnd={`url(#arrowhead-${obj.id})`} pointerEvents="none" opacity={obj.opacity ?? 1} />
+        <path d={pathD}
+          stroke={obj.color} strokeWidth={sw} fill="none"
+          strokeLinecap="round" strokeDasharray={obj.strokeDasharray || 'none'}
+          markerEnd={`url(#${markerId})`} pointerEvents="none" opacity={obj.opacity ?? 1} />
+        {isSelected && !isMultiSelected && (
+          <>
+            <EndpointHandle x={obj.x1} y={obj.y1} obj={obj} setBoardObjects={setBoardObjects} endpoint="start" />
+            <EndpointHandle x={obj.x2} y={obj.y2} obj={obj} setBoardObjects={setBoardObjects} endpoint="end" />
+            <BendHandle x={handleX} y={handleY} obj={obj} setBoardObjects={setBoardObjects} />
+          </>
+        )}
       </svg>
       {isSelected && !isMultiSelected && <DrawingColorToolbar obj={obj} midX={midX} midY={midY} updateProp={updateProp} />}
     </>
@@ -1350,11 +1448,14 @@ function Comment({ obj, isSelected, isEditing, editingText, setEditingId, setEdi
 function ConnectorObject({ obj, isSelected, handleMouseDown, updateProp, isMultiSelected, onContextMenu }) {
   const { x1, y1, x2, y2, resolvedFromAnchor, resolvedToAnchor } = obj;
   if (x1 == null || x2 == null) return null;
-  const arrowSize = 10;
   const midX = (x1 + x2) / 2;
   const midY = (y1 + y2) / 2;
   const isArrow = obj.style !== 'line';
   const color = obj.color || '#8B8FA3';
+  const sw = obj.strokeWidth || 2;
+  const chevW = Math.max(14, 6 + sw * 2.5);
+  const chevH = Math.max(16, 8 + sw * 2.5);
+  const chevSw = Math.max(2.5, sw * 0.9);
   const pathD = computeCurvedConnectorPath(
     x1, y1, x2, y2,
     resolvedFromAnchor || obj.fromAnchor || 'right',
@@ -1366,29 +1467,32 @@ function ConnectorObject({ obj, isSelected, handleMouseDown, updateProp, isMulti
       <svg style={SVG_STYLE_INTERACTIVE}>
         {isArrow && (
           <defs>
-            <marker id={`conn-${obj.id}`} markerWidth={arrowSize} markerHeight={arrowSize}
-              viewBox={`0 0 ${arrowSize} ${arrowSize}`}
-              refX={arrowSize - 1} refY={arrowSize / 2} orient="auto">
-              <path d={`M 1 1 Q ${arrowSize * 0.55} ${arrowSize / 2} ${arrowSize - 1} ${arrowSize / 2} Q ${arrowSize * 0.55} ${arrowSize / 2} 1 ${arrowSize - 1} Q ${arrowSize * 0.2} ${arrowSize / 2} 1 1 Z`} fill={color} />
+            <marker id={`conn-${obj.id}`} markerUnits="userSpaceOnUse"
+              markerWidth={chevW + chevSw} markerHeight={chevH + chevSw}
+              viewBox={`${-chevSw} ${-chevSw} ${chevW + chevSw * 2} ${chevH + chevSw * 2}`}
+              refX={chevW} refY={chevH / 2} orient="auto" overflow="visible">
+              <path d={`M 0 0 L ${chevW} ${chevH / 2} L 0 ${chevH}`}
+                fill="none" stroke={color} strokeWidth={chevSw}
+                strokeLinecap="round" strokeLinejoin="round" />
             </marker>
           </defs>
         )}
         {/* Wide invisible hit target for clicking */}
         <path d={pathD}
-          stroke="transparent" strokeWidth={Math.max(obj.strokeWidth || 2, 16)}
+          stroke="transparent" strokeWidth={Math.max(sw, 30)}
           fill="none" strokeLinecap="round"
           style={{ cursor: 'pointer', pointerEvents: 'auto' }}
           onMouseDown={(e) => handleMouseDown(e, obj.id)} onContextMenu={(e) => onContextMenu?.(e, obj.id)} />
         {/* Selection glow */}
         {isSelected && (
           <path d={pathD}
-            stroke="#2196F3" strokeWidth={(obj.strokeWidth || 2) + 6}
+            stroke="#2196F3" strokeWidth={sw + 6}
             fill="none" strokeLinecap="round" opacity={0.35} pointerEvents="none" />
         )}
         {/* Visible curved connector */}
         <path d={pathD}
-          stroke={color} strokeWidth={obj.strokeWidth || 2}
-          fill="none" strokeLinecap="round"
+          stroke={color} strokeWidth={sw}
+          fill="none" strokeLinecap="butt"
           strokeDasharray={obj.strokeDasharray || 'none'}
           markerEnd={isArrow ? `url(#conn-${obj.id})` : undefined}
           pointerEvents="none" opacity={obj.opacity ?? 1} />
