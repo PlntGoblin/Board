@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
+import rateLimit from 'express-rate-limit';
 import { createClient } from '@supabase/supabase-js';
 import OpenAI from 'openai';
 import { wrapOpenAI } from 'langsmith/wrappers';
@@ -10,28 +11,40 @@ const openai = wrapOpenAI(new OpenAI());
 
 // --- CORS ---
 const allowedOrigins = [
-  'http://localhost:5173',
-  'http://localhost:5174',
-  'http://localhost:5175',
-  'http://localhost:5176',
-  'http://localhost:5177',
-  'http://localhost:5178',
-  'http://localhost:5179',
-  'http://localhost:5180',
-  'http://localhost:5181',
-  'http://localhost:5182',
-  process.env.FRONTEND_URL,
+  process.env.FRONTEND_URL || 'http://localhost:5173',
 ].filter(Boolean).map(o => o.trim().replace(/\/+$/, ''));
 
-console.log('Allowed CORS origins:', allowedOrigins);
+// In development, also allow Vite's port range
+if (process.env.NODE_ENV !== 'production') {
+  for (let p = 5173; p <= 5182; p++) allowedOrigins.push(`http://localhost:${p}`);
+}
+
+console.log('Allowed CORS origins:', [...new Set(allowedOrigins)]);
 
 app.use(cors({
-  origin: allowedOrigins,
+  origin: [...new Set(allowedOrigins)],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
 }));
 app.use(express.json({ limit: '10mb' }));
+
+// --- Rate Limiting ---
+const aiLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
+  message: { error: 'Too many AI requests. Please wait a moment.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const apiLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 100,
+  message: { error: 'Too many requests. Please slow down.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 // --- Supabase Admin Client ---
 const supabase = createClient(
@@ -51,7 +64,8 @@ const authenticate = async (req, res, next) => {
   next();
 };
 
-// --- Board Routes ---
+// --- Board Routes (general rate limit) ---
+app.use('/api/boards', apiLimiter);
 
 // Create board
 app.post('/api/boards', authenticate, async (req, res) => {
@@ -253,8 +267,8 @@ app.patch('/api/boards/:id/visibility', authenticate, async (req, res) => {
   res.json(data);
 });
 
-// AI Messages proxy (auth-protected, traced via LangSmith)
-app.post('/api/messages', authenticate, async (req, res) => {
+// AI Messages proxy (auth-protected, rate-limited, traced via LangSmith)
+app.post('/api/messages', aiLimiter, authenticate, async (req, res) => {
   try {
     const completion = await openai.chat.completions.create(req.body);
     res.json(completion);
@@ -265,8 +279,8 @@ app.post('/api/messages', authenticate, async (req, res) => {
   }
 });
 
-// Web search via Tavily REST API (auth-protected)
-app.post('/api/search', authenticate, async (req, res) => {
+// Web search via Tavily REST API (auth-protected, rate-limited)
+app.post('/api/search', aiLimiter, authenticate, async (req, res) => {
   try {
     const { query } = req.body;
     const response = await fetch('https://api.tavily.com/search', {
@@ -288,8 +302,8 @@ app.post('/api/search', authenticate, async (req, res) => {
   }
 });
 
-// Structured content generation (auth-protected)
-app.post('/api/generate-content', authenticate, async (req, res) => {
+// Structured content generation (auth-protected, rate-limited)
+app.post('/api/generate-content', aiLimiter, authenticate, async (req, res) => {
   try {
     const { topic, type, count = 4 } = req.body;
     const completion = await openai.chat.completions.create({
@@ -309,6 +323,10 @@ app.post('/api/generate-content', authenticate, async (req, res) => {
 });
 
 const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
-});
+if (process.env.NODE_ENV !== 'test') {
+  app.listen(PORT, () => {
+    console.log(`Server running on http://localhost:${PORT}`);
+  });
+}
+
+export { app };
