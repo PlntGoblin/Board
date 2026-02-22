@@ -140,7 +140,7 @@ export default function AIChat({
 
       {showAIChat && (
         <div style={{
-          position: 'absolute', top: '68px', right: '0', width: '400px', maxWidth: '90vw',
+          position: 'absolute', top: '68px', right: '0', width: '340px', maxWidth: '90vw',
           background: 'rgba(15, 22, 38, 0.85)',
           backdropFilter: 'blur(12px)',
           WebkitBackdropFilter: 'blur(12px)',
@@ -171,16 +171,21 @@ export default function AIChat({
           </button>
 
           {/* Starfield */}
-          {[...Array(12)].map((_, i) => (
-            <div key={i} style={{
-              position: 'absolute',
-              width: i % 3 === 0 ? '2px' : '1px', height: i % 3 === 0 ? '2px' : '1px',
-              borderRadius: '50%', background: 'rgba(180, 200, 255, 0.5)',
-              top: `${8 + (i * 37) % 90}%`, left: `${5 + (i * 53) % 90}%`,
-              animation: `star-twinkle ${1.5 + (i % 4) * 0.5}s ease-in-out ${(i % 5) * 0.3}s infinite`,
-              pointerEvents: 'none',
-            }} />
-          ))}
+          {[...Array(40)].map((_, i) => {
+            const size = i % 5 === 0 ? 2.5 : i % 3 === 0 ? 1.5 : 1;
+            return (
+              <div key={i} style={{
+                position: 'absolute',
+                width: `${size}px`, height: `${size}px`,
+                borderRadius: '50%',
+                background: i % 7 === 0 ? 'rgba(200, 220, 255, 0.7)' : 'rgba(180, 200, 255, 0.4)',
+                top: `${3 + (i * 31 + i * i * 7) % 94}%`,
+                left: `${3 + (i * 47 + i * i * 13) % 94}%`,
+                animation: `star-twinkle ${2 + (i % 5) * 0.7}s ease-in-out ${(i % 8) * 0.4}s infinite`,
+                pointerEvents: 'none',
+              }} />
+            );
+          })}
           <style>{`
             @keyframes star-twinkle { 0%, 100% { opacity: 0.2; } 50% { opacity: 0.8; } }
             @keyframes rocket-float { 0%, 100% { transform: translateY(0px); } 50% { transform: translateY(-4px); } }

@@ -332,6 +332,30 @@ export const createTemplateTool = tool(
   }
 );
 
+export const createMultipleObjectsTool = tool(
+  async (args) => args,
+  {
+    name: "createMultipleObjects",
+    description: "Create many objects at once in a single call. Use this when creating 10+ objects (e.g. 'make 100 sticky notes'). Each object in the array specifies its type and properties. Supports stickyNote, shape, frame, and text. Objects are auto-arranged in a grid if no positions are given.",
+    schema: z.object({
+      objects: z
+        .array(
+          z.object({
+            type: z.enum(["stickyNote", "shape", "frame", "text"]).describe("Object type"),
+            text: z.string().optional().describe("Text content (for stickyNote/text) or title (for frame)"),
+            color: z.string().optional().describe("Color (e.g. 'yellow', 'pink', '#ff0000')"),
+            x: z.number().optional().describe("X position (auto-arranged if omitted)"),
+            y: z.number().optional().describe("Y position (auto-arranged if omitted)"),
+            width: z.number().optional().describe("Width in pixels (default: 200)"),
+            height: z.number().optional().describe("Height in pixels (default: 200)"),
+            shapeType: z.enum(["rectangle", "circle", "triangle", "diamond", "hexagon", "star"]).optional().describe("Shape type (only for type='shape')"),
+          })
+        )
+        .describe("Array of objects to create. Can contain hundreds of items."),
+    }),
+  }
+);
+
 // Ordered list of all board tools
 export const boardTools = [
   createStickyNoteTool,
@@ -355,6 +379,7 @@ export const boardTools = [
   webSearchTool,
   generateContentTool,
   createTemplateTool,
+  createMultipleObjectsTool,
 ];
 
 // OpenAI function-calling format — generated from Zod schemas

@@ -710,6 +710,48 @@ const AIBoard = () => {
         setBoardObjects(prev => [...prev, ...newObjects]);
         return { success: true, objectCount: newObjects.length, ...bounds };
       }
+      case "createMultipleObjects": {
+        const items = toolInput.objects;
+        if (!items?.length) return { success: false, error: 'No objects provided' };
+
+        // Always auto-arrange in a grid — AI is bad at computing positions for large batches
+        const cols = Math.ceil(Math.sqrt(items.length));
+        const cellW = 220, cellH = 220; // 200 + 20 gap
+        // Start position — right of existing objects or at origin
+        let baseX = 0, baseY = 0;
+        if (boardObjects.length > 0) {
+          baseX = Math.round(Math.max(...boardObjects.map(o => (o.x ?? o.x1 ?? 0) + (o.width || 200))) + 80);
+          baseY = Math.round(Math.min(...boardObjects.map(o => o.y ?? o.y1 ?? 0)));
+        }
+
+        const newObjects = items.map((item, i) => {
+          const x = baseX + (i % cols) * cellW;
+          const y = baseY + Math.floor(i / cols) * cellH;
+          const w = item.width || 200;
+          const h = item.height || 200;
+
+          if (item.type === 'stickyNote') {
+            return { id: nextId.current++, type: 'stickyNote', x, y, width: w, height: h, color: item.color || 'yellow', text: item.text || '' };
+          } else if (item.type === 'shape') {
+            return { id: nextId.current++, type: 'shape', shapeType: item.shapeType || 'rectangle', x, y, width: w, height: h, color: item.color || '#667eea' };
+          } else if (item.type === 'frame') {
+            return { id: nextId.current++, type: 'frame', x, y, width: item.width || 400, height: item.height || 350, title: item.text || '' };
+          } else if (item.type === 'text') {
+            return { id: nextId.current++, type: 'text', x, y, width: w, height: 50, text: item.text || '' };
+          }
+          return { id: nextId.current++, type: 'stickyNote', x, y, width: w, height: h, color: item.color || 'yellow', text: item.text || '' };
+        });
+
+        setBoardObjects(prev => [...prev, ...newObjects]);
+        const ids = newObjects.map(o => o.id);
+        // Compute bounds for auto-zoom
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        for (const o of newObjects) {
+          minX = Math.min(minX, o.x); minY = Math.min(minY, o.y);
+          maxX = Math.max(maxX, o.x + (o.width || 200)); maxY = Math.max(maxY, o.y + (o.height || 200));
+        }
+        return { success: true, createdCount: newObjects.length, objectIds: ids, x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+      }
       default:
         return { error: `Unknown tool: ${toolName}` };
     }
@@ -781,7 +823,7 @@ Rules:
 - For MODIFYING existing objects (move, resize, recolor, delete, connect): use the board state above to find object IDs.
 - Use findObjects(filter) to search for specific objects by type, color, or text — it's fast and token-cheap. Example: findObjects({ type: "stickyNote", color: "pink" }) returns matching IDs instantly.
 - Do NOT call getBoardState — the board state is already in the system prompt. Only use it as a last resort if findObjects can't get what you need after board mutations.
-- BATCH all tool calls: when creating a template or multiple objects, issue ALL tool calls (frames, stickies, connectors) in ONE response — do not split them across multiple replies.
+- For BULK creation (10+ objects): ALWAYS use createMultipleObjects — pass the entire array in one call. Never refuse a request because of quantity. If the user asks for 100 or 200 objects, use createMultipleObjects with the full array. Positions are auto-arranged in a grid if omitted.
 - Be concise: after completing a task, reply with ONE short sentence only (e.g. "Done — SWOT analysis created."). Do not explain what you did, list the objects, or mention zoom.
 - Prefer modifying existing objects (move, resize, recolor) over deleting and recreating them.
 - Never move objects the user didn't ask you to move.
@@ -832,13 +874,13 @@ CRITICAL: Always batch ALL tool calls in ONE response. Never split across multip
     // Track bounds of newly created objects directly from tool inputs (no state read needed)
     const createdBounds = [];
     recentStickyRects.current = [];
-    const CREATION_TOOLS_AI = new Set(['createStickyNote', 'createShape', 'createFrame', 'createText', 'createTemplate']);
+    const CREATION_TOOLS_AI = new Set(['createStickyNote', 'createShape', 'createFrame', 'createText', 'createTemplate', 'createMultipleObjects']);
 
     try {
       let currentMessages = [systemMessage, ...newHistory];
       let continueProcessing = true;
       let iterations = 0;
-      const MAX_ITERATIONS = 10;
+      const MAX_ITERATIONS = 30;
 
       while (continueProcessing && iterations < MAX_ITERATIONS) {
         iterations++;
@@ -850,8 +892,8 @@ CRITICAL: Always batch ALL tool calls in ONE response. Never split across multip
           method: "POST",
           headers: { "Content-Type": "application/json", "Authorization": `Bearer ${freshSession?.access_token}` },
           body: JSON.stringify({
-            model: "gpt-4o-mini",
-            max_completion_tokens: 4096,
+            model: "gpt-4.1-nano",
+            max_completion_tokens: 8192,
             tools: openaiToolSchemas,
             messages: currentMessages,
           }),
@@ -885,8 +927,8 @@ CRITICAL: Always batch ALL tool calls in ONE response. Never split across multip
 
             // Collect bounds synchronously from tool inputs — no state read needed
             if (CREATION_TOOLS_AI.has(toolName) && result.success) {
-              if (toolName === 'createTemplate') {
-                // createTemplate returns its own bounds (covers the whole template)
+              if (toolName === 'createTemplate' || toolName === 'createMultipleObjects') {
+                // These return their own bounds
                 createdBounds.push({ x: result.x, y: result.y, w: result.w, h: result.h });
               } else {
                 createdBounds.push({
