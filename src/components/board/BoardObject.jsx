@@ -1137,6 +1137,17 @@ function ArrowDrawing({ obj, isSelected, handleMouseDown, updateProp, isMultiSel
           </>
         )}
       </svg>
+      {obj.label && (
+        <div style={{
+          position: 'absolute', left: midX, top: midY,
+          transform: 'translate(-50%, -50%)',
+          background: 'rgba(15, 22, 38, 0.85)', color: '#fff',
+          padding: '2px 8px', borderRadius: '4px',
+          fontSize: '11px', fontWeight: 500, whiteSpace: 'nowrap',
+          pointerEvents: 'none', userSelect: 'none',
+          fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+        }}>{obj.label}</div>
+      )}
       {isSelected && !isMultiSelected && <DrawingColorToolbar obj={obj} midX={midX} midY={midY} updateProp={updateProp} />}
     </>
   );
@@ -1497,6 +1508,17 @@ function ConnectorObject({ obj, isSelected, handleMouseDown, updateProp, isMulti
           markerEnd={isArrow ? `url(#conn-${obj.id})` : undefined}
           pointerEvents="none" opacity={obj.opacity ?? 1} />
       </svg>
+      {obj.label && (
+        <div style={{
+          position: 'absolute', left: midX, top: midY,
+          transform: 'translate(-50%, -50%)',
+          background: 'rgba(15, 22, 38, 0.85)', color: '#fff',
+          padding: '2px 8px', borderRadius: '4px',
+          fontSize: '11px', fontWeight: 500, whiteSpace: 'nowrap',
+          pointerEvents: 'none', userSelect: 'none',
+          fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+        }}>{obj.label}</div>
+      )}
       {isSelected && !isMultiSelected && <DrawingColorToolbar obj={obj} midX={midX} midY={midY} updateProp={updateProp} />}
     </>
   );

@@ -28,16 +28,17 @@ export const createShapeTool = tool(
   async (args) => args,
   {
     name: "createShape",
-    description: "Create a shape (rectangle, circle, triangle, diamond, hexagon, or star) on the board",
+    description: "Create a shape (rectangle, circle, triangle, diamond, hexagon, or star) on the board. Use diamond for decision nodes in flowcharts, rectangle for process steps.",
     schema: z.object({
       type: z
         .enum(["rectangle", "circle", "triangle", "diamond", "hexagon", "star"])
-        .describe("Type of shape"),
+        .describe("Type of shape. Use 'diamond' for flowchart decisions, 'rectangle' for process steps, 'circle' for start/end nodes."),
       x: z.number().describe("X position"),
       y: z.number().describe("Y position"),
       width: z.number().describe("Width of the shape"),
       height: z.number().describe("Height of the shape"),
       color: z.string().describe("Fill color of the shape (hex or named color)"),
+      text: z.string().optional().describe("Text label displayed inside the shape (e.g. 'Start', 'Is email valid?', 'Send reset link')"),
     }),
   }
 );
@@ -62,7 +63,7 @@ export const createConnectorTool = tool(
   {
     name: "createConnector",
     description:
-      "Create a connector (arrow or line) between two objects on the board. Connection points are calculated from object centers automatically.",
+      "Create a connector (arrow or line) between two objects on the board. Connection points are calculated from object centers automatically. Use label for Yes/No branches in flowcharts.",
     schema: z.object({
       fromId: z.number().describe("ID of the source object to connect from"),
       toId: z.number().describe("ID of the target object to connect to"),
@@ -73,6 +74,10 @@ export const createConnectorTool = tool(
         .string()
         .optional()
         .describe("Color of the connector (e.g. '#667eea', 'white'). Defaults to white."),
+      label: z
+        .string()
+        .optional()
+        .describe("Text label on the connector (e.g. 'Yes', 'No', 'Error'). Shown at the midpoint."),
     }),
   }
 );

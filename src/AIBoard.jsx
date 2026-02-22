@@ -120,6 +120,7 @@ const AIBoard = () => {
   const rotationStartRef = useRef(null);
   const innerDivRef = useRef(null);
   const recentStickyRects = useRef([]);
+  const recentlyCreatedObjects = useRef([]); // Track objects created in current AI session (connectors need these)
 
   // --- Theme ---
   const theme = darkTheme;
@@ -385,21 +386,26 @@ const AIBoard = () => {
         recentStickyRects.current.push({ x: nx, y: ny, w: sw, h: sh });
         const n = { id: nextId.current++, type: 'stickyNote', x: nx, y: ny, width: sw, height: sh, color: toolInput.color, text: toolInput.text };
         setBoardObjects(prev => [...prev, n]);
+        recentlyCreatedObjects.current.push(n);
         return { success: true, objectId: n.id };
       }
       case "createShape": {
-        const n = { id: nextId.current++, type: 'shape', shapeType: toolInput.type, x: toolInput.x, y: toolInput.y, width: toolInput.width, height: toolInput.height, color: toolInput.color };
+        const n = { id: nextId.current++, type: 'shape', shapeType: toolInput.type, x: toolInput.x, y: toolInput.y, width: toolInput.width, height: toolInput.height, color: toolInput.color, ...(toolInput.text ? { text: toolInput.text } : {}) };
         setBoardObjects(prev => [...prev, n]);
+        recentlyCreatedObjects.current.push(n);
         return { success: true, objectId: n.id };
       }
       case "createFrame": {
         const n = { id: nextId.current++, type: 'frame', x: toolInput.x, y: toolInput.y, width: toolInput.width, height: toolInput.height, title: toolInput.title };
         setBoardObjects(prev => [...prev, n]);
+        recentlyCreatedObjects.current.push(n);
         return { success: true, objectId: n.id };
       }
       case "createConnector": {
-        const fromObj = boardObjects.find(o => o.id === toolInput.fromId);
-        const toObj = boardObjects.find(o => o.id === toolInput.toId);
+        // Search both committed state AND recently created objects (state may be stale during AI session)
+        const allObjects = [...boardObjects, ...recentlyCreatedObjects.current];
+        const fromObj = allObjects.find(o => o.id === toolInput.fromId);
+        const toObj = allObjects.find(o => o.id === toolInput.toId);
         if (!fromObj || !toObj) return { success: false, error: `Object not found: ${!fromObj ? toolInput.fromId : toolInput.toId}` };
         const fromCenterX = fromObj.x + (fromObj.width || 200) / 2;
         const fromCenterY = fromObj.y + (fromObj.height || 200) / 2;
@@ -412,8 +418,10 @@ const AIBoard = () => {
           color: toolInput.color || '#8B8FA3', strokeWidth: 2,
           fromId: toolInput.fromId, toId: toolInput.toId,
           ...(toolInput.style === 'dashed' ? { strokeDasharray: '8 4' } : {}),
+          ...(toolInput.label ? { label: toolInput.label } : {}),
         };
         setBoardObjects(prev => [...prev, n]);
+        recentlyCreatedObjects.current.push(n);
         return { success: true, objectId: n.id, type: connectorType };
       }
       case "moveObject": {
@@ -453,6 +461,7 @@ const AIBoard = () => {
       case "createText": {
         const n = { id: nextId.current++, type: 'text', x: toolInput.x, y: toolInput.y, width: 200, height: 50, text: toolInput.text };
         setBoardObjects(prev => [...prev, n]);
+        recentlyCreatedObjects.current.push(n);
         return { success: true, objectId: n.id };
       }
       case "findObjects": {
@@ -708,6 +717,7 @@ const AIBoard = () => {
         }
 
         setBoardObjects(prev => [...prev, ...newObjects]);
+        recentlyCreatedObjects.current.push(...newObjects);
         return { success: true, objectCount: newObjects.length, ...bounds };
       }
       case "createMultipleObjects": {
@@ -743,6 +753,7 @@ const AIBoard = () => {
         });
 
         setBoardObjects(prev => [...prev, ...newObjects]);
+        recentlyCreatedObjects.current.push(...newObjects);
         const ids = newObjects.map(o => o.id);
         // Compute bounds for auto-zoom
         let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
@@ -831,7 +842,8 @@ Rules:
 - When a command is ambiguous, ask the user to clarify before acting.
 - When resizing a frame to fit contents: find objects inside/near the frame, calculate their bounding box (min x, min y, max x+width, max y+height), add ~20px padding, then use resizeObject and optionally moveObject on the FRAME only — never move the contents.
 - When arranging in grids, account for object sizes (sticky notes are 200x200, shapes vary).
-- Use createConnector to draw arrows or lines between related objects (e.g. journey map stages, flow diagrams).
+- Use createConnector to draw arrows or lines between related objects (e.g. journey map stages, flow diagrams). Use the label parameter for "Yes"/"No" on decision branches.
+- FLOWCHARTS: When asked to create a flowchart, process flow, or diagram: use createShape with text labels. Use circle for start/end, rectangle for process steps, diamond for decisions. Space shapes ~150px apart vertically. Connect them with createConnector(style:"arrow"). Add label:"Yes" and label:"No" on decision branches. Create ALL shapes first, then ALL connectors — connectors reference shape IDs returned from creation.
 - Use webSearch when the user wants current/real information (news, facts, research). After searching, ALWAYS call createStickyNote for each key finding — never just describe them in text.
 - Use generateContent to pre-fill templates with relevant ideas, risks, action items, etc. In the SAME response, immediately follow with createStickyNote calls for each generated item. Never describe sticky notes in text — always call the tool.
 - CRITICAL: When asked to create sticky notes (directly or via generateContent/webSearch), you MUST call createStickyNote tool(s). Responding with only text is not acceptable.
@@ -874,6 +886,7 @@ CRITICAL: Always batch ALL tool calls in ONE response. Never split across multip
     // Track bounds of newly created objects directly from tool inputs (no state read needed)
     const createdBounds = [];
     recentStickyRects.current = [];
+    recentlyCreatedObjects.current = [];
     const CREATION_TOOLS_AI = new Set(['createStickyNote', 'createShape', 'createFrame', 'createText', 'createTemplate', 'createMultipleObjects']);
 
     try {
