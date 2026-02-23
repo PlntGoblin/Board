@@ -8,4 +8,4 @@ export const CULL_MARGIN = 200;
 export const ZOOM_MIN = 0.1;
 export const ZOOM_MAX = 3;
 
-export const HISTORY_MAX_DEPTH = 50;
+export const HISTORY_MAX_DEPTH = 200;

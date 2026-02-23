@@ -47,6 +47,7 @@ const AIBoard = () => {
   const [selectedIds, setSelectedIds] = useState([]);
   const [draggedId, setDraggedId] = useState(null);
   const dragStart = useRef({ screenX: 0, screenY: 0, objX: 0, objY: 0 });
+  const frameChildIdsRef = useRef(new Set());
   const [viewportOffset, setViewportOffset] = useState({ x: 0, y: 0 });
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
@@ -333,16 +334,19 @@ const AIBoard = () => {
           if (objs.length > 0) {
             let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
             for (const obj of objs) {
+              if (obj.type === 'connector') continue; // connectors derive position from endpoints
               const b = getObjBounds(obj);
               minX = Math.min(minX, b.x); minY = Math.min(minY, b.y);
               maxX = Math.max(maxX, b.x + b.w); maxY = Math.max(maxY, b.y + b.h);
             }
-            const centerX = minX + (maxX - minX) / 2;
-            const centerY = minY + (maxY - minY) / 2;
-            setViewportOffset({
-              x: (window.innerWidth - 80) / 2 - centerX,
-              y: (window.innerHeight - 60) / 2 - centerY,
-            });
+            if (isFinite(minX)) {
+              const centerX = minX + (maxX - minX) / 2;
+              const centerY = minY + (maxY - minY) / 2;
+              setViewportOffset({
+                x: (window.innerWidth - 80) / 2 - centerX,
+                y: (window.innerHeight - 60) / 2 - centerY,
+              });
+            }
           }
         }
         setBoardLoaded(true);
@@ -356,7 +360,43 @@ const AIBoard = () => {
   // --- Zoom ---
   const zoomIn = useCallback(() => setZoom(prev => Math.min(+(prev * 1.25).toFixed(2), ZOOM_MAX)), []);
   const zoomOut = useCallback(() => setZoom(prev => Math.max(+(prev / 1.25).toFixed(2), ZOOM_MIN)), []);
-  const fitToScreen = useCallback(() => { setZoom(1); setViewportOffset({ x: 0, y: 0 }); }, []);
+  const fitToScreen = useCallback(() => {
+    if (boardObjects.length === 0) {
+      setZoom(1); setViewportOffset({ x: 0, y: 0 });
+      return;
+    }
+    // Compute bounding box of all objects (skip connectors — they derive position from endpoints)
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const obj of boardObjects) {
+      if (obj.type === 'connector') continue;
+      const b = getObjBounds(obj);
+      minX = Math.min(minX, b.x); minY = Math.min(minY, b.y);
+      maxX = Math.max(maxX, b.x + b.w); maxY = Math.max(maxY, b.y + b.h);
+    }
+    if (!isFinite(minX)) {
+      setZoom(1); setViewportOffset({ x: 0, y: 0 });
+      return;
+    }
+    const pad = 80;
+    const contentW = maxX - minX + pad * 2;
+    const contentH = maxY - minY + pad * 2;
+    const newZoom = Math.min(Math.max(Math.min(
+      window.innerWidth / contentW,
+      window.innerHeight / contentH
+    ), ZOOM_MIN), ZOOM_MAX);
+    const centerX = minX + (maxX - minX) / 2;
+    const centerY = minY + (maxY - minY) / 2;
+    // Smooth animated transition
+    if (innerDivRef.current) {
+      innerDivRef.current.style.transition = 'transform 0.6s cubic-bezier(0.25, 1, 0.5, 1)';
+      setTimeout(() => { if (innerDivRef.current) innerDivRef.current.style.transition = ''; }, 700);
+    }
+    setZoom(newZoom);
+    setViewportOffset({
+      x: window.innerWidth / 2 - centerX * newZoom,
+      y: window.innerHeight / 2 - centerY * newZoom,
+    });
+  }, [boardObjects]);
 
   // --- Guest sign-up / sign-out handler ---
   const handleGuestSignUp = useCallback(async () => {
@@ -411,18 +451,18 @@ const AIBoard = () => {
         const fromCenterY = fromObj.y + (fromObj.height || 200) / 2;
         const toCenterX = toObj.x + (toObj.width || 200) / 2;
         const toCenterY = toObj.y + (toObj.height || 200) / 2;
-        const connectorType = toolInput.style === 'line' || toolInput.style === 'dashed' ? 'line' : 'arrow';
         const n = {
-          id: nextId.current++, type: connectorType,
+          id: nextId.current++, type: 'connector',
           x1: fromCenterX, y1: fromCenterY, x2: toCenterX, y2: toCenterY,
           color: toolInput.color || '#8B8FA3', strokeWidth: 2,
           fromId: toolInput.fromId, toId: toolInput.toId,
+          connectorStyle: toolInput.style || 'arrow',
           ...(toolInput.style === 'dashed' ? { strokeDasharray: '8 4' } : {}),
           ...(toolInput.label ? { label: toolInput.label } : {}),
         };
         setBoardObjects(prev => [...prev, n]);
         recentlyCreatedObjects.current.push(n);
-        return { success: true, objectId: n.id, type: connectorType };
+        return { success: true, objectId: n.id, type: 'connector' };
       }
       case "moveObject": {
         setBoardObjects(prev => prev.map(obj => toolInput.objectIds.includes(obj.id)
@@ -905,7 +945,7 @@ CRITICAL: Always batch ALL tool calls in ONE response. Never split across multip
           method: "POST",
           headers: { "Content-Type": "application/json", "Authorization": `Bearer ${freshSession?.access_token}` },
           body: JSON.stringify({
-            model: "gpt-4.1-nano",
+            model: "gpt-4.1-mini",
             max_completion_tokens: 8192,
             tools: openaiToolSchemas,
             messages: currentMessages,
@@ -1034,11 +1074,31 @@ CRITICAL: Always batch ALL tool calls in ONE response. Never split across multip
     }
 
     if (objId && CREATION_TOOLS.includes(activeTool)) {
-      // Creation tool is active — ignore object interaction, let canvas click handle placement
+      // Arrow/line tools: start line from the click point on the object
+      if (activeTool === 'arrow' || activeTool === 'line') {
+        const pt = screenToBoard(e);
+        if (pt) setLineStart(pt);
+        e.stopPropagation();
+        return;
+      }
+      // Connector tool: start connection from nearest anchor
+      if (activeTool === 'connector') {
+        const pt = screenToBoard(e);
+        if (pt) {
+          const anchor = getNearestAnchor(boardObjects.find(o => o.id === objId), pt.x, pt.y);
+          handleAnchorMouseDown(e, objId, anchor);
+        }
+        return;
+      }
+      // Other creation tools — ignore object interaction, let canvas click handle placement
       return;
     }
 
+    // Flush any active contentEditable before changing selection/editing state
+    if (editingId) document.activeElement?.blur();
+
     if (objId) {
+
       const isMultiKey = e.metaKey || e.ctrlKey;
       if (isMultiKey) {
         setSelectedIds(prev => prev.includes(objId) ? prev.filter(id => id !== objId) : [...prev, objId]);
@@ -1055,6 +1115,18 @@ CRITICAL: Always batch ALL tool calls in ONE response. Never split across multip
             objX: obj.x ?? obj.x1 ?? (obj.points?.[0]?.x || 0),
             objY: obj.y ?? obj.y1 ?? (obj.points?.[0]?.y || 0),
           };
+          // Snapshot frame children at drag start
+          frameChildIdsRef.current = new Set();
+          if (obj.type === 'frame') {
+            const fb = getObjBounds(obj);
+            for (const o of boardObjects) {
+              if (o.id === objId || o.type === 'connector') continue;
+              const ob = getObjBounds(o);
+              if (ob.x >= fb.x && ob.y >= fb.y && ob.x + ob.w <= fb.x + fb.w && ob.y + ob.h <= fb.y + fb.h) {
+                frameChildIdsRef.current.add(o.id);
+              }
+            }
+          }
         }
         e.stopPropagation();
         return;
@@ -1069,6 +1141,18 @@ CRITICAL: Always batch ALL tool calls in ONE response. Never split across multip
           objX: obj.x ?? obj.x1 ?? (obj.points?.[0]?.x || 0),
           objY: obj.y ?? obj.y1 ?? (obj.points?.[0]?.y || 0),
         };
+        // Snapshot frame children at drag start
+        frameChildIdsRef.current = new Set();
+        if (obj.type === 'frame') {
+          const fb = getObjBounds(obj);
+          for (const o of boardObjects) {
+            if (o.id === objId || o.type === 'connector') continue;
+            const ob = getObjBounds(o);
+            if (ob.x >= fb.x && ob.y >= fb.y && ob.x + ob.w <= fb.x + fb.w && ob.y + ob.h <= fb.y + fb.h) {
+              frameChildIdsRef.current.add(o.id);
+            }
+          }
+        }
       }
       e.stopPropagation();
     } else {
@@ -1110,7 +1194,7 @@ CRITICAL: Always batch ALL tool calls in ONE response. Never split across multip
 
       // Connector drag: runs whenever actively dragging from an anchor (any tool)
       if (connectingFrom && pt) {
-        const CONNECTABLE = ['stickyNote', 'shape', 'text', 'frame', 'comment', 'emoji'];
+        const CONNECTABLE = ['stickyNote', 'shape', 'text', 'frame', 'emoji'];
         const CONN_PAD = 25;
         const underCursor = boardObjects.find(o => {
           if (!CONNECTABLE.includes(o.type)) return false;
@@ -1135,7 +1219,7 @@ CRITICAL: Always batch ALL tool calls in ONE response. Never split across multip
       }
       // Connector tool hover detection (no active drag)
       if (activeTool === 'connector' && pt) {
-        const CONNECTABLE = ['stickyNote', 'shape', 'text', 'frame', 'comment', 'emoji'];
+        const CONNECTABLE = ['stickyNote', 'shape', 'text', 'frame', 'emoji'];
         const CONN_PAD = 25;
         const underCursor = boardObjects.find(o => {
           if (!CONNECTABLE.includes(o.type)) return false;
@@ -1175,22 +1259,24 @@ CRITICAL: Always batch ALL tool calls in ONE response. Never split across multip
       if (isResizing && selectedId) {
         const mouseX = (clientX - viewportOffset.x) / zoom;
         const mouseY = (clientY - viewportOffset.y) / zoom;
-        setBoardObjects(prev => prev.map(obj => {
-          if (obj.id !== selectedId) return obj;
+        setBoardObjects(prev => {
+          const frame = prev.find(o => o.id === selectedId);
+          if (!frame) return prev;
           const handle = resizeHandle || 'se';
-          let newX = obj.x, newY = obj.y, newW = obj.width, newH = obj.height;
-          if (handle.includes('e')) newW = Math.max(50, mouseX - obj.x);
-          if (handle.includes('s')) newH = Math.max(50, mouseY - obj.y);
+          let newX = frame.x, newY = frame.y, newW = frame.width, newH = frame.height;
+          if (handle.includes('e')) newW = Math.max(50, mouseX - frame.x);
+          if (handle.includes('s')) newH = Math.max(50, mouseY - frame.y);
           if (handle.includes('w')) {
-            newW = Math.max(50, (obj.x + obj.width) - mouseX);
-            newX = Math.min(mouseX, obj.x + obj.width - 50);
+            newW = Math.max(50, (frame.x + frame.width) - mouseX);
+            newX = Math.min(mouseX, frame.x + frame.width - 50);
           }
           if (handle.includes('n')) {
-            newH = Math.max(50, (obj.y + obj.height) - mouseY);
-            newY = Math.min(mouseY, obj.y + obj.height - 50);
+            newH = Math.max(50, (frame.y + frame.height) - mouseY);
+            newY = Math.min(mouseY, frame.y + frame.height - 50);
           }
-          return { ...obj, x: newX, y: newY, width: newW, height: newH };
-        }));
+
+          return prev.map(obj => obj.id === selectedId ? { ...obj, x: newX, y: newY, width: newW, height: newH } : obj);
+        });
         return;
       }
 
@@ -1209,8 +1295,13 @@ CRITICAL: Always batch ALL tool calls in ONE response. Never split across multip
             const objX = draggedObj.x ?? draggedObj.x1 ?? (draggedObj.points?.[0]?.x || 0);
             const objY = draggedObj.y ?? draggedObj.y1 ?? (draggedObj.points?.[0]?.y || 0);
             const dx = newX - objX, dy = newY - objY;
+            const movedIds = new Set(selectedIds);
             setBoardObjects(prev => prev.map(obj => {
-              if (!selectedIds.includes(obj.id)) return obj;
+              // Move attached comments along with their parent
+              if (obj.type === 'comment' && obj.attachedTo && movedIds.has(obj.attachedTo) && !movedIds.has(obj.id)) {
+                return { ...obj, x: obj.x + dx, y: obj.y + dy };
+              }
+              if (!movedIds.has(obj.id)) return obj;
               if (obj.type === 'line' || obj.type === 'arrow') return { ...obj, x1: obj.x1 + dx, y1: obj.y1 + dy, x2: obj.x2 + dx, y2: obj.y2 + dy, ...(obj.cx != null ? { cx: obj.cx + dx, cy: obj.cy + dy } : {}) };
               if (obj.type === 'path') return { ...obj, points: obj.points.map(p => ({ x: p.x + dx, y: p.y + dy })) };
               return { ...obj, x: obj.x + dx, y: obj.y + dy };
@@ -1231,20 +1322,17 @@ CRITICAL: Always batch ALL tool calls in ONE response. Never split across multip
               dx = newX - draggedObj.x; dy = newY - draggedObj.y;
             }
 
-            // If dragging a frame, find children fully contained inside it
-            const frameChildIds = new Set();
-            if (draggedObj.type === 'frame') {
-              const fb = getObjBounds(draggedObj);
-              for (const o of prev) {
-                if (o.id === draggedId || o.type === 'connector') continue;
-                const ob = getObjBounds(o);
-                if (ob.x >= fb.x && ob.y >= fb.y && ob.x + ob.w <= fb.x + fb.w && ob.y + ob.h <= fb.y + fb.h) {
-                  frameChildIds.add(o.id);
-                }
-              }
-            }
+            // Use frame children captured at drag start (not recalculated per-move)
+            const frameChildIds = frameChildIdsRef.current;
+
+            // Collect all objects that are being moved (dragged + frame children)
+            const movedIds = new Set([draggedId, ...frameChildIds]);
 
             return prev.map(obj => {
+              // Move attached comments along with their parent
+              if (obj.type === 'comment' && obj.attachedTo && movedIds.has(obj.attachedTo) && !movedIds.has(obj.id)) {
+                return { ...obj, x: obj.x + dx, y: obj.y + dy };
+              }
               const isChild = frameChildIds.has(obj.id);
               if (obj.id !== draggedId && !isChild) return obj;
               if (obj.type === 'line' || obj.type === 'arrow') {
@@ -1331,7 +1419,7 @@ CRITICAL: Always batch ALL tool calls in ONE response. Never split across multip
     if (connectingFrom) {
       const pt = screenToBoard(e);
       if (pt) {
-        const CONNECTABLE = ['stickyNote', 'shape', 'text', 'frame', 'comment', 'emoji'];
+        const CONNECTABLE = ['stickyNote', 'shape', 'text', 'frame', 'emoji'];
         const CONN_PAD = 25;
         const targetObj = boardObjects.find(o => {
           if (o.id === connectingFrom.objId || !CONNECTABLE.includes(o.type)) return false;
@@ -1352,7 +1440,7 @@ CRITICAL: Always batch ALL tool calls in ONE response. Never split across multip
       setConnectorPreview(null);
       setHoveredObjId(null);
     }
-    setDraggedId(null); setIsPanning(false); setIsResizing(false); setResizeHandle(null); setIsRotating(false); rotationStartRef.current = null;
+    setDraggedId(null); setIsPanning(false); setIsResizing(false); setResizeHandle(null); setIsRotating(false); rotationStartRef.current = null; frameChildIdsRef.current = new Set();
   };
 
   // --- Wheel zoom ---
@@ -1582,7 +1670,19 @@ CRITICAL: Always batch ALL tool calls in ONE response. Never split across multip
       setEditingId(n.id); setEditingText(''); setActiveTool('select');
     } else if (activeTool === 'comment') {
       const av = getUserAvatar(user);
-      const n = { id: nextId.current++, type: 'comment', x: pt.x, y: pt.y, text: '', author: user?.email || 'Anonymous', avatar_emoji: av.emoji, avatar_color: av.color, timestamp: Date.now() };
+      // Auto-attach comment to the nearest object under/near the click
+      const ATTACH_PAD = 30;
+      const ATTACHABLE = ['stickyNote', 'shape', 'text', 'frame', 'emoji'];
+      const target = boardObjects.find(o => {
+        if (!ATTACHABLE.includes(o.type)) return false;
+        const b = getObjBounds(o);
+        return pt.x >= b.x - ATTACH_PAD && pt.x <= b.x + b.w + ATTACH_PAD && pt.y >= b.y - ATTACH_PAD && pt.y <= b.y + b.h + ATTACH_PAD;
+      });
+      const n = {
+        id: nextId.current++, type: 'comment', x: pt.x, y: pt.y, text: '',
+        author: user?.email || 'Anonymous', avatar_emoji: av.emoji, avatar_color: av.color, timestamp: Date.now(),
+        ...(target ? { attachedTo: target.id, attachOffsetX: pt.x - target.x, attachOffsetY: pt.y - target.y } : {}),
+      };
       setBoardObjects(prev => [...prev, n]);
       setEditingId(n.id); setEditingText(''); setActiveTool('select');
     } else if (activeTool === 'emoji') {
@@ -2019,7 +2119,7 @@ CRITICAL: Always batch ALL tool calls in ONE response. Never split across multip
 
             {/* Anchor dots: show on hovered, connecting, and selected connectable objects */}
             {(() => {
-              const CONNECTABLE = ['stickyNote', 'shape', 'text', 'frame', 'comment', 'emoji'];
+              const CONNECTABLE = ['stickyNote', 'shape', 'text', 'frame', 'emoji'];
               const anchorIds = new Set();
               if (hoveredObjId) anchorIds.add(hoveredObjId);
               if (connectingFrom) {

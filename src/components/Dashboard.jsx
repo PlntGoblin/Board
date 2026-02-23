@@ -4,6 +4,7 @@ import { Plus, Search, Home, Clock, Star, Grid3x3, List, Trash2, LogOut, UserMin
 import { useAuth } from '../hooks/useAuth';
 import { useBoard } from '../hooks/useBoard';
 import { getUserAvatar, AVATAR_EMOJIS, AVATAR_COLORS } from '../lib/utils';
+import { getObjBounds, getConnectorEndpoints, computeCurvedConnectorPath } from '../lib/geometry';
 
 const STICKY_COLORS = {
   yellow: '#FFF59D', pink: '#F48FB1', blue: '#81D4FA',
@@ -26,6 +27,10 @@ function BoardThumbnail({ boardData }) {
       </div>
     );
   }
+
+  // Build object map for connector resolution
+  const objMap = {};
+  for (const obj of objects) objMap[obj.id] = obj;
 
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   for (const obj of objects) {
@@ -52,6 +57,44 @@ function BoardThumbnail({ boardData }) {
   const vw = maxX - minX || 1;
   const vh = maxY - minY || 1;
 
+  // Helper: render shape SVG element based on shapeType
+  const renderShapeSVG = (obj) => {
+    const w = obj.width || 100, h = obj.height || 100;
+    const fill = resolveColor(obj.color);
+    const stroke = obj.strokeColor || 'rgba(255,255,255,0.15)';
+    const sw = obj.strokeWidth ?? 2;
+    switch (obj.shapeType) {
+      case 'circle':
+        return <ellipse cx={obj.x + w/2} cy={obj.y + h/2} rx={w/2} ry={h/2} fill={fill} stroke={stroke} strokeWidth={sw} />;
+      case 'triangle':
+        return <polygon points={`${obj.x + w/2},${obj.y + 2} ${obj.x + w - 2},${obj.y + h - 2} ${obj.x + 2},${obj.y + h - 2}`} fill={fill} stroke={stroke} strokeWidth={sw} strokeLinejoin="round" />;
+      case 'diamond':
+        return <polygon points={`${obj.x + w/2},${obj.y + 2} ${obj.x + w - 2},${obj.y + h/2} ${obj.x + w/2},${obj.y + h - 2} ${obj.x + 2},${obj.y + h/2}`} fill={fill} stroke={stroke} strokeWidth={sw} strokeLinejoin="round" />;
+      case 'hexagon': {
+        const cx = obj.x + w/2, cy = obj.y + h/2, rx = w/2 - 2, ry = h/2 - 2;
+        const pts = Array.from({length: 6}, (_, i) => {
+          const a = Math.PI / 3 * i - Math.PI / 2;
+          return `${cx + rx * Math.cos(a)},${cy + ry * Math.sin(a)}`;
+        }).join(' ');
+        return <polygon points={pts} fill={fill} stroke={stroke} strokeWidth={sw} strokeLinejoin="round" />;
+      }
+      case 'star': {
+        const cx = obj.x + w/2, cy = obj.y + h/2, outer = Math.min(w, h)/2 - 2, inner = outer * 0.4;
+        const pts = Array.from({length: 10}, (_, i) => {
+          const a = Math.PI / 5 * i - Math.PI / 2;
+          const r = i % 2 === 0 ? outer : inner;
+          return `${cx + r * Math.cos(a)},${cy + r * Math.sin(a)}`;
+        }).join(' ');
+        return <polygon points={pts} fill={fill} stroke={stroke} strokeWidth={sw} strokeLinejoin="round" />;
+      }
+      default:
+        return <rect x={obj.x} y={obj.y} width={w} height={h} rx={4} fill={fill} stroke={stroke} strokeWidth={sw} />;
+    }
+  };
+
+  // Strip HTML tags for text preview
+  const stripHtml = (html) => (html || '').replace(/<[^>]*>/g, '');
+
   return (
     <svg
       viewBox={`${minX} ${minY} ${vw} ${vh}`}
@@ -64,36 +107,44 @@ function BoardThumbnail({ boardData }) {
             <g key={obj.id}>
               <rect x={obj.x} y={obj.y} width={obj.width || 200} height={obj.height || 160}
                 fill={resolveColor(obj.color)} rx={4} stroke="rgba(255,255,255,0.1)" strokeWidth={2} />
-              <text x={obj.x + 12} y={obj.y + 28} fontSize={14} fill="#333"
-                clipPath={`inset(0 0 0 0)`}>
-                {(obj.text || '').slice(0, 30)}
+              <text x={obj.x + 12} y={obj.y + 28} fontSize={14} fill="#333">
+                {stripHtml(obj.text).slice(0, 30)}
               </text>
             </g>
           );
         }
         if (obj.type === 'shape') {
-          return obj.shapeType === 'circle' ? (
-            <ellipse key={obj.id}
-              cx={obj.x + (obj.width || 100) / 2} cy={obj.y + (obj.height || 100) / 2}
-              rx={(obj.width || 100) / 2} ry={(obj.height || 100) / 2}
-              fill={resolveColor(obj.color)} stroke="rgba(255,255,255,0.15)" strokeWidth={2} />
-          ) : (
-            <rect key={obj.id} x={obj.x} y={obj.y}
-              width={obj.width || 100} height={obj.height || 100}
-              fill={resolveColor(obj.color)} rx={4} stroke="rgba(255,255,255,0.15)" strokeWidth={2} />
+          const w = obj.width || 100, h = obj.height || 100;
+          return (
+            <g key={obj.id}>
+              {renderShapeSVG(obj)}
+              {obj.text && (
+                <text x={obj.x + w/2} y={obj.y + h/2 + 5} fontSize={12} fill="#333"
+                  textAnchor="middle" dominantBaseline="middle">
+                  {stripHtml(obj.text).slice(0, 20)}
+                </text>
+              )}
+            </g>
           );
         }
         if (obj.type === 'frame') {
           return (
-            <rect key={obj.id} x={obj.x} y={obj.y}
-              width={obj.width || 300} height={obj.height || 200}
-              fill="none" stroke="#475569" strokeWidth={2} strokeDasharray="8 4" rx={8} />
+            <g key={obj.id}>
+              <rect x={obj.x} y={obj.y}
+                width={obj.width || 300} height={obj.height || 200}
+                fill="none" stroke="#475569" strokeWidth={2} strokeDasharray="8 4" rx={8} />
+              {obj.title && (
+                <text x={obj.x + 8} y={obj.y - 8} fontSize={13} fill="#94a3b8" fontWeight="500">
+                  {obj.title}
+                </text>
+              )}
+            </g>
           );
         }
         if (obj.type === 'text') {
           return (
             <text key={obj.id} x={obj.x} y={obj.y + 16} fontSize={16} fill="#94a3b8">
-              {(obj.text || '').slice(0, 40)}
+              {stripHtml(obj.text).slice(0, 40)}
             </text>
           );
         }
@@ -113,6 +164,48 @@ function BoardThumbnail({ boardData }) {
                 stroke={obj.color || '#94a3b8'} strokeWidth={obj.strokeWidth || 2} strokeLinecap="round" />
               <circle cx={obj.x2} cy={obj.y2} r={4} fill={obj.color || '#94a3b8'} />
             </g>
+          );
+        }
+        if (obj.type === 'connector') {
+          const fromObj = objMap[obj.fromId];
+          const toObj = objMap[obj.toId];
+          if (!fromObj || !toObj) return null;
+          const endpoints = getConnectorEndpoints(fromObj, toObj, obj.fromAnchor, obj.toAnchor);
+          const { x1, y1, x2, y2, resolvedFromAnchor, resolvedToAnchor } = endpoints;
+          const pathD = computeCurvedConnectorPath(
+            x1, y1, x2, y2,
+            resolvedFromAnchor || obj.fromAnchor || 'right',
+            resolvedToAnchor || obj.toAnchor || 'left',
+            getObjBounds(fromObj), getObjBounds(toObj)
+          );
+          const color = obj.color || '#8B8FA3';
+          const sw = obj.strokeWidth || 2;
+          const isArrow = (obj.connectorStyle || obj.style) !== 'line';
+          return (
+            <g key={obj.id}>
+              {isArrow && (
+                <defs>
+                  <marker id={`thumb-conn-${obj.id}`} markerUnits="strokeWidth"
+                    markerWidth={8} markerHeight={6} refX={7} refY={3} orient="auto">
+                    <path d="M 0 0 L 8 3 L 0 6" fill="none" stroke={color} strokeWidth={1.5}
+                      strokeLinecap="round" strokeLinejoin="round" />
+                  </marker>
+                </defs>
+              )}
+              <path d={pathD} stroke={color} strokeWidth={sw}
+                fill="none" strokeLinecap="round"
+                strokeDasharray={obj.strokeDasharray || 'none'}
+                markerEnd={isArrow ? `url(#thumb-conn-${obj.id})` : undefined} />
+            </g>
+          );
+        }
+        if (obj.type === 'emoji') {
+          const sz = Math.min(obj.width || 48, obj.height || 48);
+          return (
+            <text key={obj.id} x={obj.x + (obj.width || 48) / 2} y={obj.y + (obj.height || 48) / 2}
+              fontSize={sz * 0.75} textAnchor="middle" dominantBaseline="central">
+              {obj.emoji}
+            </text>
           );
         }
         return null;

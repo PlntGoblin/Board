@@ -1,8 +1,8 @@
-import { ArrowLeft, Cloud, CloudOff, Loader, Share2, Trash2, UserPlus, LogOut } from 'lucide-react';
+import { ArrowLeft, Share2, Trash2, UserPlus, LogOut } from 'lucide-react';
 import PresenceBar from '../PresenceBar';
 
 export default function BoardHeader({
-  boardTitle, setBoardTitle, saveBoard, boardId, saveStatus,
+  boardTitle, setBoardTitle, saveBoard, boardId,
   onlineUsers, user,
   onClear, hasBoardObjects, onShare, navigate, theme,
   isGuest, onSignUp, onSignOut,
@@ -44,17 +44,6 @@ export default function BoardHeader({
         onBlurCapture={(e) => e.target.style.background = 'transparent'}
       />
 
-      {!isGuest && (
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px',
-          color: saveStatus === 'saved' ? '#4caf50' : saveStatus === 'saving' ? '#ff9800' : saveStatus === 'error' ? '#f44336' : theme.textMuted,
-        }}>
-          {saveStatus === 'saved' && <Cloud size={14} />}
-          {saveStatus === 'saving' && <Loader size={14} style={{ animation: 'spin 1s linear infinite' }} />}
-          {saveStatus === 'unsaved' && <CloudOff size={14} />}
-          {saveStatus === 'error' && <CloudOff size={14} />}
-        </div>
-      )}
 
       <div style={{ flex: 1 }} />
 
