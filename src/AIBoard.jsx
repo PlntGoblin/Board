@@ -134,7 +134,6 @@ const AIBoard = () => {
   }, [boardObjects]);
 
   // Viewport culling: only render objects visible in viewport + buffer
-  // Connectors are always kept (their bounds depend on referenced objects)
   const { visible: visibleObjects, selectedSet } = useMemo(() => {
     const vLeft = -viewportOffset.x / zoom - CULL_MARGIN;
     const vTop = -viewportOffset.y / zoom - CULL_MARGIN;
@@ -142,11 +141,20 @@ const AIBoard = () => {
     const vBottom = (window.innerHeight - viewportOffset.y) / zoom + CULL_MARGIN;
     const viewport = { x: vLeft, y: vTop, w: vRight - vLeft, h: vBottom - vTop };
 
-    const visible = boardObjects.filter(obj =>
-      obj.type === 'connector' || boxesIntersect(getObjBounds(obj), viewport)
-    );
+    // Build a quick lookup for visible object IDs
+    const visibleIds = new Set();
+    const nonConnectors = [];
+    const connectors = [];
+    for (const obj of boardObjects) {
+      if (obj.type === 'connector') { connectors.push(obj); continue; }
+      if (boxesIntersect(getObjBounds(obj), viewport)) { visibleIds.add(obj.id); nonConnectors.push(obj); }
+    }
+    // Only include connectors where at least one endpoint is visible
+    for (const c of connectors) {
+      if (visibleIds.has(c.fromId) || visibleIds.has(c.toId)) nonConnectors.push(c);
+    }
     const selectedSet = new Set(selectedIds);
-    return { visible, selectedSet };
+    return { visible: nonConnectors, selectedSet };
   }, [boardObjects, viewportOffset.x, viewportOffset.y, zoom, selectedIds]);
 
 
@@ -883,7 +891,7 @@ Rules:
 - When resizing a frame to fit contents: find objects inside/near the frame, calculate their bounding box (min x, min y, max x+width, max y+height), add ~20px padding, then use resizeObject and optionally moveObject on the FRAME only — never move the contents.
 - When arranging in grids, account for object sizes (sticky notes are 200x200, shapes vary).
 - Use createConnector to draw arrows or lines between related objects (e.g. journey map stages, flow diagrams). Use the label parameter for "Yes"/"No" on decision branches.
-- FLOWCHARTS: When asked to create a flowchart, process flow, or diagram: use createShape with text labels. Use circle for start/end, rectangle for process steps, diamond for decisions. Space shapes ~150px apart vertically. Connect them with createConnector(style:"arrow"). Add label:"Yes" and label:"No" on decision branches. Create ALL shapes first, then ALL connectors — connectors reference shape IDs returned from creation.
+- FLOWCHARTS: When asked to create a flowchart, process flow, or diagram: use createMultipleObjects with ALL shapes in a single call (type:"shape", shapeType:"circle" for start/end, "rectangle" for process steps, "diamond" for decisions, with text labels). Space shapes ~150px apart vertically. Then create ALL connectors in a second createMultipleObjects call (type:"connector", style:"arrow"). Add label:"Yes" and label:"No" on decision branches. This two-call approach is MUCH faster than individual createShape/createConnector calls.
 - Use webSearch when the user wants current/real information (news, facts, research). After searching, ALWAYS call createStickyNote for each key finding — never just describe them in text.
 - Use generateContent to pre-fill templates with relevant ideas, risks, action items, etc. In the SAME response, immediately follow with createStickyNote calls for each generated item. Never describe sticky notes in text — always call the tool.
 - CRITICAL: When asked to create sticky notes (directly or via generateContent/webSearch), you MUST call createStickyNote tool(s). Responding with only text is not acceptable.
@@ -1165,10 +1173,10 @@ CRITICAL: Always batch ALL tool calls in ONE response. Never split across multip
       }
 
       const pt = screenToBoard(e);
-      if (pt && (activeTool === 'pen' || activeTool === 'eraser' || activeTool === 'arrow' || activeTool === 'line' || activeTool === 'shape' || activeTool === 'frame' || activeTool === 'emoji')) {
+      if (pt && (activeTool === 'pen' || activeTool === 'eraser' || activeTool === 'arrow' || activeTool === 'line' || activeTool === 'shape' || activeTool === 'frame' || activeTool === 'emoji' || activeTool === 'sticky')) {
         if (activeTool === 'pen') { setIsDrawing(true); setCurrentPath([pt]); }
         else if (activeTool === 'eraser') { setIsErasing(true); eraseAtPoint(pt.x, pt.y); }
-        else if (activeTool === 'arrow' || activeTool === 'line' || activeTool === 'shape' || activeTool === 'frame' || activeTool === 'emoji') setLineStart(pt);
+        else if (activeTool === 'arrow' || activeTool === 'line' || activeTool === 'shape' || activeTool === 'frame' || activeTool === 'emoji' || activeTool === 'sticky') setLineStart(pt);
       }
     }
   };
@@ -1232,7 +1240,7 @@ CRITICAL: Always batch ALL tool calls in ONE response. Never split across multip
 
       if (isDrawing && activeTool === 'pen' && pt) { setCurrentPath(prev => [...prev, pt]); return; }
       if (isErasing && activeTool === 'eraser' && pt) { eraseAtPoint(pt.x, pt.y); return; }
-      if (lineStart && (activeTool === 'arrow' || activeTool === 'line' || activeTool === 'shape' || activeTool === 'frame' || activeTool === 'emoji') && pt) { setLineEnd(pt); return; }
+      if (lineStart && (activeTool === 'arrow' || activeTool === 'line' || activeTool === 'shape' || activeTool === 'frame' || activeTool === 'emoji' || activeTool === 'sticky') && pt) { setLineEnd(pt); return; }
 
       if (isRotating && selectedId && selectedIds.length <= 1) {
         const mouseX = (clientX - viewportOffset.x) / zoom;
@@ -1432,6 +1440,22 @@ CRITICAL: Always batch ALL tool calls in ONE response. Never split across multip
         };
         setBoardObjects(prev => [...prev, n]);
         setSelectedIds([n.id]); setActiveTool('select');
+        setLineStart(null); setLineEnd(null);
+      }
+    }
+    if (lineStart && activeTool === 'sticky') {
+      const pt = screenToBoard(e);
+      if (pt) {
+        const x = Math.min(lineStart.x, pt.x), y = Math.min(lineStart.y, pt.y);
+        const w = Math.abs(pt.x - lineStart.x), h = Math.abs(pt.y - lineStart.y);
+        const n = {
+          id: nextId.current++, type: 'stickyNote',
+          x: w > 10 ? x : lineStart.x, y: h > 10 ? y : lineStart.y,
+          width: w > 10 ? w : 200, height: h > 10 ? h : 200,
+          color: stickyColor, text: '',
+        };
+        setBoardObjects(prev => [...prev, n]);
+        setEditingId(n.id); setEditingText(''); setActiveTool('select');
         setLineStart(null); setLineEnd(null);
       }
     }
@@ -1674,16 +1698,12 @@ CRITICAL: Always batch ALL tool calls in ONE response. Never split across multip
   const handleCanvasClick = (e) => {
     setShowStickyMenu(false);
     setShowShapeMenu(false);
-    if (activeTool === 'select' || activeTool === 'hand' || activeTool === 'pen' || activeTool === 'eraser' || activeTool === 'arrow' || activeTool === 'line' || activeTool === 'shape' || activeTool === 'frame' || activeTool === 'emoji' || isPanning) return;
+    if (activeTool === 'select' || activeTool === 'hand' || activeTool === 'pen' || activeTool === 'eraser' || activeTool === 'arrow' || activeTool === 'line' || activeTool === 'shape' || activeTool === 'frame' || activeTool === 'emoji' || activeTool === 'sticky' || isPanning) return;
     setShowEmojiMenu(false);
     const pt = screenToBoard(e);
     if (!pt) return;
 
-    if (activeTool === 'sticky') {
-      const n = { id: nextId.current++, type: 'stickyNote', x: pt.x, y: pt.y, width: 200, height: 200, color: stickyColor, text: '' };
-      setBoardObjects(prev => [...prev, n]);
-      setEditingId(n.id); setEditingText(''); setActiveTool('select');
-    } else if (activeTool === 'text') {
+    if (activeTool === 'text') {
       const n = { id: nextId.current++, type: 'text', x: pt.x, y: pt.y, width: 200, height: 50, text: '' };
       setBoardObjects(prev => [...prev, n]);
       setEditingId(n.id); setEditingText(''); setActiveTool('select');
@@ -1698,10 +1718,12 @@ CRITICAL: Always batch ALL tool calls in ONE response. Never split across multip
         const b = getObjBounds(o);
         return pt.x >= b.x - ATTACH_PAD && pt.x <= b.x + b.w + ATTACH_PAD && pt.y >= b.y - ATTACH_PAD && pt.y <= b.y + b.h + ATTACH_PAD;
       });
+      // Offset so the pin tip (sharp corner after -45deg rotation) lands at the click point
+      const pinX = pt.x - 18, pinY = pt.y - 44;
       const n = {
-        id: nextId.current++, type: 'comment', x: pt.x, y: pt.y, text: '',
+        id: nextId.current++, type: 'comment', x: pinX, y: pinY, text: '',
         author: user?.email || 'Anonymous', avatar_emoji: av.emoji, avatar_color: av.color, timestamp: Date.now(),
-        ...(target ? { attachedTo: target.id, attachOffsetX: pt.x - target.x, attachOffsetY: pt.y - target.y } : {}),
+        ...(target ? { attachedTo: target.id, attachOffsetX: pinX - target.x, attachOffsetY: pinY - target.y } : {}),
       };
       setBoardObjects(prev => [...prev, n]);
       setEditingId(n.id); setEditingText(''); setActiveTool('select');
@@ -2130,6 +2152,23 @@ CRITICAL: Always batch ALL tool calls in ONE response. Never split across multip
                     return <rect x={1} y={1} width={pw-2} height={ph-2} rx={4} fill={fill} stroke={stroke} strokeWidth={sw} opacity={op} />;
                   })()}
                 </svg>
+              );
+            })()}
+
+            {/* Sticky note tool: live preview while dragging */}
+            {lineStart && lineEnd && activeTool === 'sticky' && (() => {
+              const px = Math.min(lineStart.x, lineEnd.x), py = Math.min(lineStart.y, lineEnd.y);
+              const pw = Math.abs(lineEnd.x - lineStart.x), ph = Math.abs(lineEnd.y - lineStart.y);
+              if (pw < 5 && ph < 5) return null;
+              return (
+                <div style={{
+                  position: 'absolute', left: px, top: py, width: pw, height: ph,
+                  backgroundColor: getColor(stickyColor),
+                  border: '1px solid rgba(0,0,0,0.08)',
+                  borderRadius: '2px 2px 4px 4px',
+                  pointerEvents: 'none', zIndex: 201, opacity: 0.6,
+                  boxShadow: '0 1px 1px rgba(0,0,0,0.04), 0 4px 6px rgba(0,0,0,0.06)',
+                }} />
               );
             })()}
 
