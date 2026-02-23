@@ -700,8 +700,7 @@ export default function Dashboard() {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          background: 'rgba(255,255,255,0.01)',
-          backdropFilter: 'blur(10px)',
+          background: '#0a0a14',
         }}>
           <h2 style={{
             margin: 0,
