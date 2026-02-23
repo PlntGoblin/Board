@@ -772,26 +772,29 @@ const AIBoard = () => {
         const items = toolInput.objects;
         if (!items?.length) return { success: false, error: 'No objects provided' };
 
-        // Always auto-arrange in a grid — AI is bad at computing positions for large batches
+        // Auto-arrange in a grid only for items without positions
         const cols = Math.ceil(Math.sqrt(items.length));
-        const cellW = 220, cellH = 220; // 200 + 20 gap
-        // Start position — right of existing objects or at origin
+        const cellW = 220, cellH = 220;
         let baseX = 0, baseY = 0;
         if (boardObjects.length > 0) {
           baseX = Math.round(Math.max(...boardObjects.map(o => (o.x ?? o.x1 ?? 0) + (o.width || 200))) + 80);
           baseY = Math.round(Math.min(...boardObjects.map(o => o.y ?? o.y1 ?? 0)));
         }
 
-        const newObjects = items.map((item, i) => {
-          const x = baseX + (i % cols) * cellW;
-          const y = baseY + Math.floor(i / cols) * cellH;
+        let gridIdx = 0;
+        const newObjects = items.map((item) => {
+          // Use AI-provided positions when given, otherwise auto-grid
+          const hasPos = item.x != null && item.y != null;
+          const x = hasPos ? item.x : baseX + (gridIdx % cols) * cellW;
+          const y = hasPos ? item.y : baseY + Math.floor(gridIdx / cols) * cellH;
+          if (!hasPos) gridIdx++;
           const w = item.width || 200;
           const h = item.height || 200;
 
           if (item.type === 'stickyNote') {
             return { id: nextId.current++, type: 'stickyNote', x, y, width: w, height: h, color: item.color || 'yellow', text: item.text || '' };
           } else if (item.type === 'shape') {
-            return { id: nextId.current++, type: 'shape', shapeType: item.shapeType || 'rectangle', x, y, width: w, height: h, color: item.color || '#667eea' };
+            return { id: nextId.current++, type: 'shape', shapeType: item.shapeType || 'rectangle', x, y, width: w, height: h, color: item.color || '#667eea', text: item.text || '' };
           } else if (item.type === 'frame') {
             return { id: nextId.current++, type: 'frame', x, y, width: item.width || 400, height: item.height || 350, title: item.text || '' };
           } else if (item.type === 'text') {
@@ -803,7 +806,6 @@ const AIBoard = () => {
         setBoardObjects(prev => [...prev, ...newObjects]);
         recentlyCreatedObjects.current.push(...newObjects);
         const ids = newObjects.map(o => o.id);
-        // Compute bounds for auto-zoom
         let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
         for (const o of newObjects) {
           minX = Math.min(minX, o.x); minY = Math.min(minY, o.y);
@@ -891,7 +893,7 @@ Rules:
 - When resizing a frame to fit contents: find objects inside/near the frame, calculate their bounding box (min x, min y, max x+width, max y+height), add ~20px padding, then use resizeObject and optionally moveObject on the FRAME only — never move the contents.
 - When arranging in grids, account for object sizes (sticky notes are 200x200, shapes vary).
 - Use createConnector to draw arrows or lines between related objects (e.g. journey map stages, flow diagrams). Use the label parameter for "Yes"/"No" on decision branches.
-- FLOWCHARTS: When asked to create a flowchart, process flow, or diagram: use createMultipleObjects with ALL shapes in a single call (type:"shape", shapeType:"circle" for start/end, "rectangle" for process steps, "diamond" for decisions, with text labels). Space shapes ~150px apart vertically. Then create ALL connectors in a second createMultipleObjects call (type:"connector", style:"arrow"). Add label:"Yes" and label:"No" on decision branches. This two-call approach is MUCH faster than individual createShape/createConnector calls.
+- FLOWCHARTS: When asked to create a flowchart, process flow, or diagram: use createShape with text labels. Use circle for start/end, rectangle for process steps, diamond for decisions. Space shapes ~150px apart vertically. Connect them with createConnector(style:"arrow"). Add label:"Yes" and label:"No" on decision branches. Create ALL shapes first, then ALL connectors — connectors reference shape IDs returned from creation. Batch ALL tool calls in ONE response.
 - Use webSearch when the user wants current/real information (news, facts, research). After searching, ALWAYS call createStickyNote for each key finding — never just describe them in text.
 - Use generateContent to pre-fill templates with relevant ideas, risks, action items, etc. In the SAME response, immediately follow with createStickyNote calls for each generated item. Never describe sticky notes in text — always call the tool.
 - CRITICAL: When asked to create sticky notes (directly or via generateContent/webSearch), you MUST call createStickyNote tool(s). Responding with only text is not acceptable.
