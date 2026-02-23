@@ -88,12 +88,28 @@ function StickyNote({ obj, isSelected, isEditing, editingText, setEditingId, set
   const noteAlign = obj.textAlign || 'left';
   const showToolbar = (isSelected || isEditing) && !isMultiSelected;
   const editRef = useRef(null);
+  const savedRef = useRef(false);
+  const clickPosRef = useRef(null);
+  const PAD = 6; // invisible padding for easier click targeting
 
-  // Focus contentEditable when entering edit mode
+  // Focus contentEditable when entering edit mode — place cursor at click position
   useEffect(() => {
     if (isEditing && editRef.current) {
+      savedRef.current = false;
       editRef.current.focus();
-      // Place cursor at end
+      if (clickPosRef.current) {
+        const { x, y } = clickPosRef.current;
+        clickPosRef.current = null;
+        // Place cursor where the user double-clicked
+        const range = document.caretRangeFromPoint?.(x, y);
+        if (range) {
+          const sel = window.getSelection();
+          sel.removeAllRanges();
+          sel.addRange(range);
+          return;
+        }
+      }
+      // Fallback: place cursor at end
       const sel = window.getSelection();
       sel.selectAllChildren(editRef.current);
       sel.collapseToEnd();
@@ -101,6 +117,8 @@ function StickyNote({ obj, isSelected, isEditing, editingText, setEditingId, set
   }, [isEditing]);
 
   const saveContent = () => {
+    if (savedRef.current) return;
+    savedRef.current = true;
     if (editRef.current) {
       const html = editRef.current.innerHTML;
       setBoardObjects(prev => prev.map(o => o.id === obj.id ? { ...o, text: html } : o));
@@ -124,7 +142,7 @@ function StickyNote({ obj, isSelected, isEditing, editingText, setEditingId, set
   };
 
   return (
-    <div key={obj.id} style={{ position: 'absolute', left: obj.x, top: obj.y, transform: obj.rotation ? `rotate(${obj.rotation}deg)` : undefined, transformOrigin: 'center center' }}>
+    <div key={obj.id} style={{ position: 'absolute', left: obj.x - PAD, top: obj.y - PAD, padding: PAD, transform: obj.rotation ? `rotate(${obj.rotation}deg)` : undefined, transformOrigin: 'center center' }}>
       {isSelected && !isEditing && !isMultiSelected && <RotationHandle setIsRotating={setIsRotating} />}
       {showToolbar && (
         <div
@@ -210,14 +228,29 @@ function StickyNote({ obj, isSelected, isEditing, editingText, setEditingId, set
       )}
 
       <div
-        onMouseDown={(e) => { if (!isEditing) handleMouseDown(e, obj.id); }}
+        onMouseDown={(e) => {
+          if (isEditing) {
+            // Entire surface is text input — stop drag propagation
+            e.stopPropagation();
+          } else {
+            handleMouseDown(e, obj.id);
+          }
+        }}
         onContextMenu={(e) => onContextMenu?.(e, obj.id)}
+        onDoubleClick={(e) => {
+          e.stopPropagation();
+          if (!isEditing) {
+            clickPosRef.current = { x: e.clientX, y: e.clientY };
+            setEditingId(obj.id);
+            setEditingText(obj.text);
+          }
+        }}
         style={{
           width: obj.width, height: obj.height,
           backgroundColor: getColor(obj.color),
           border: '1px solid rgba(0,0,0,0.08)',
           borderRadius: '2px 2px 4px 4px',
-          cursor: isEditing ? 'default' : 'move',
+          cursor: isEditing ? 'text' : 'move',
           boxShadow: '0 1px 1px rgba(0,0,0,0.04), 0 4px 6px rgba(0,0,0,0.06), 0 10px 14px -4px rgba(0,0,0,0.1), 2px 12px 16px -2px rgba(0,0,0,0.08)',
           fontSize: `${noteFontSize}px`, fontWeight: obj.fontWeight || 'normal',
           textAlign: noteAlign, overflow: 'hidden',
@@ -228,50 +261,30 @@ function StickyNote({ obj, isSelected, isEditing, editingText, setEditingId, set
         <div style={{
           position: 'absolute', top: 0, left: 0, right: 0, height: '6px',
           background: 'linear-gradient(180deg, rgba(0,0,0,0.06) 0%, transparent 100%)',
-          borderRadius: '2px 2px 0 0', pointerEvents: 'none', zIndex: 1,
+          borderRadius: '2px 2px 0 0', pointerEvents: 'none',
         }} />
-        {/* Text editing zone — top area */}
-        <div
-          onMouseDown={(e) => { if (isEditing) e.stopPropagation(); }}
-          onDoubleClick={(e) => {
-            e.stopPropagation();
-            if (!isEditing) { setEditingId(obj.id); setEditingText(obj.text); }
-          }}
-          style={{
-            padding: '16px 16px 8px 16px', cursor: isEditing ? 'text' : 'move',
-            flexShrink: 0, minHeight: `${noteFontSize + 16}px`,
-          }}
-        >
-          {isEditing ? (
-            <div
-              ref={editRef}
-              contentEditable
-              suppressContentEditableWarning
-              onBlur={saveContent}
-              onKeyDown={(e) => { if (e.key === 'Escape') saveContent(); }}
-              dangerouslySetInnerHTML={{ __html: obj.text || '' }}
-              style={{
-                width: '100%', minHeight: Math.max(40, Math.floor((obj.height || 200) * 0.35)) + 'px',
-                border: 'none', outline: 'none',
-                background: 'transparent', fontSize: 'inherit', fontWeight: 'inherit',
-                textAlign: 'inherit', fontFamily: 'inherit', color: 'inherit',
-                overflow: 'auto', whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-              }}
-            />
-          ) : (
-            <span style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }} dangerouslySetInnerHTML={{ __html: obj.text || '' }} />
-          )}
-        </div>
-        {/* Drag zone — rest of the note body */}
-        {isEditing && (
+        {isEditing ? (
           <div
-            onMouseDown={(e) => { handleMouseDown(e, obj.id); }}
-            onDoubleClick={(e) => e.stopPropagation()}
-            style={{ flex: 1, cursor: 'move', minHeight: '20px' }}
+            ref={editRef}
+            contentEditable
+            suppressContentEditableWarning
+            onBlur={saveContent}
+            onKeyDown={(e) => { if (e.key === 'Escape') saveContent(); }}
+            dangerouslySetInnerHTML={{ __html: obj.text || '' }}
+            style={{
+              flex: 1, padding: '16px',
+              border: 'none', outline: 'none',
+              background: 'transparent', fontSize: 'inherit', fontWeight: 'inherit',
+              textAlign: 'inherit', fontFamily: 'inherit', color: 'inherit',
+              overflow: 'auto', whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+              cursor: 'text', boxSizing: 'border-box',
+            }}
           />
+        ) : (
+          <div style={{ padding: '16px', whiteSpace: 'pre-wrap', wordBreak: 'break-word', flex: 1 }} dangerouslySetInnerHTML={{ __html: obj.text || '' }} />
         )}
       </div>
-      {isSelected && !isMultiSelected && (
+      {isSelected && !isMultiSelected && !isEditing && (
         <SelectionOutline obj={obj} setIsResizing={setIsResizing} setResizeHandle={setResizeHandle} />
       )}
     </div>
@@ -1461,7 +1474,7 @@ function ConnectorObject({ obj, isSelected, handleMouseDown, updateProp, isMulti
   if (x1 == null || x2 == null) return null;
   const midX = (x1 + x2) / 2;
   const midY = (y1 + y2) / 2;
-  const isArrow = obj.style !== 'line';
+  const isArrow = (obj.connectorStyle || obj.style) !== 'line';
   const color = obj.color || '#8B8FA3';
   const sw = obj.strokeWidth || 2;
   const chevW = Math.max(14, 6 + sw * 2.5);

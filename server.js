@@ -1,12 +1,17 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
+import helmet from 'helmet';
 import { createClient } from '@supabase/supabase-js';
 import OpenAI from 'openai';
 import { wrapOpenAI } from 'langsmith/wrappers';
+import { z } from 'zod';
 
 const app = express();
 const openai = wrapOpenAI(new OpenAI());
+
+// --- Security Headers ---
+app.use(helmet());
 
 // --- CORS ---
 const allowedOrigins = [
@@ -31,7 +36,12 @@ app.use(cors({
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
 }));
-app.use(express.json({ limit: '10mb' }));
+
+// --- Per-endpoint body size limits ---
+const jsonLimit = (limit) => express.json({ limit });
+const JSON_SMALL = jsonLimit('50kb');   // AI chat, search, share, visibility
+const JSON_MEDIUM = jsonLimit('256kb'); // Board creation, content generation
+const JSON_LARGE = jsonLimit('5mb');    // Board save (board_data can be large)
 
 // --- Supabase Admin Client ---
 const supabase = createClient(
@@ -51,11 +61,67 @@ const authenticate = async (req, res, next) => {
   next();
 };
 
+// --- Zod validation middleware ---
+const validate = (schema) => (req, res, next) => {
+  const result = schema.safeParse(req.body);
+  if (!result.success) {
+    const errors = result.error.issues.map(i => `${i.path.join('.')}: ${i.message}`);
+    return res.status(400).json({ error: 'Validation failed', details: errors });
+  }
+  req.validated = result.data;
+  next();
+};
+
+// --- Validation Schemas ---
+const schemas = {
+  createBoard: z.object({
+    title: z.string().max(200).optional(),
+  }),
+
+  saveBoard: z.object({
+    board_data: z.object({
+      objects: z.array(z.object({
+        id: z.number(),
+        type: z.string(),
+      }).passthrough()).optional(),
+      nextId: z.number().optional(),
+    }).passthrough().optional(),
+    title: z.string().max(200).optional(),
+  }),
+
+  share: z.object({
+    email: z.string().email('Invalid email address'),
+    role: z.enum(['editor', 'viewer']).optional(),
+  }),
+
+  visibility: z.object({
+    is_public: z.boolean(),
+  }),
+
+  messages: z.object({
+    model: z.string().max(100),
+    messages: z.array(z.object({
+      role: z.enum(['system', 'user', 'assistant', 'tool']),
+      content: z.any(),
+    }).passthrough()).min(1),
+  }).passthrough(),
+
+  search: z.object({
+    query: z.string().min(1, 'Search query is required').max(500),
+  }),
+
+  generateContent: z.object({
+    topic: z.string().min(1).max(500),
+    type: z.string().min(1).max(100),
+    count: z.number().int().min(1).max(20).optional(),
+  }),
+};
+
 // --- Board Routes ---
 
 // Create board
-app.post('/api/boards', authenticate, async (req, res) => {
-  const { title } = req.body;
+app.post('/api/boards', JSON_MEDIUM, authenticate, validate(schemas.createBoard), async (req, res) => {
+  const { title } = req.validated;
   const { data, error } = await supabase
     .from('boards')
     .insert({ owner_id: req.user.id, title: title || 'Untitled Board', is_public: true })
@@ -132,8 +198,8 @@ app.get('/api/boards/:id', authenticate, async (req, res) => {
 });
 
 // Save board state
-app.put('/api/boards/:id', authenticate, async (req, res) => {
-  const { board_data, title } = req.body;
+app.put('/api/boards/:id', JSON_LARGE, authenticate, validate(schemas.saveBoard), async (req, res) => {
+  const { board_data, title } = req.validated;
   const update = {};
   if (board_data) update.board_data = board_data;
   if (title !== undefined) update.title = title;
@@ -191,8 +257,8 @@ app.delete('/api/boards/:id', authenticate, async (req, res) => {
 });
 
 // Share board
-app.post('/api/boards/:id/share', authenticate, async (req, res) => {
-  const { email, role } = req.body;
+app.post('/api/boards/:id/share', JSON_SMALL, authenticate, validate(schemas.share), async (req, res) => {
+  const { email, role } = req.validated;
 
   // Verify requester is owner
   const { data: board } = await supabase
@@ -238,8 +304,8 @@ app.post('/api/boards/:id/share', authenticate, async (req, res) => {
 });
 
 // Toggle board public/private
-app.patch('/api/boards/:id/visibility', authenticate, async (req, res) => {
-  const { is_public } = req.body;
+app.patch('/api/boards/:id/visibility', JSON_SMALL, authenticate, validate(schemas.visibility), async (req, res) => {
+  const { is_public } = req.validated;
 
   const { data, error } = await supabase
     .from('boards')
@@ -254,9 +320,9 @@ app.patch('/api/boards/:id/visibility', authenticate, async (req, res) => {
 });
 
 // AI Messages proxy (auth-protected, traced via LangSmith)
-app.post('/api/messages', authenticate, async (req, res) => {
+app.post('/api/messages', JSON_SMALL, authenticate, validate(schemas.messages), async (req, res) => {
   try {
-    const completion = await openai.chat.completions.create(req.body);
+    const completion = await openai.chat.completions.create(req.validated);
     res.json(completion);
   } catch (error) {
     console.error('Proxy error:', error);
@@ -266,9 +332,9 @@ app.post('/api/messages', authenticate, async (req, res) => {
 });
 
 // Web search via Tavily REST API (auth-protected)
-app.post('/api/search', authenticate, async (req, res) => {
+app.post('/api/search', JSON_SMALL, authenticate, validate(schemas.search), async (req, res) => {
   try {
-    const { query } = req.body;
+    const { query } = req.validated;
     const response = await fetch('https://api.tavily.com/search', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -289,9 +355,9 @@ app.post('/api/search', authenticate, async (req, res) => {
 });
 
 // Structured content generation (auth-protected)
-app.post('/api/generate-content', authenticate, async (req, res) => {
+app.post('/api/generate-content', JSON_MEDIUM, authenticate, validate(schemas.generateContent), async (req, res) => {
   try {
-    const { topic, type, count = 4 } = req.body;
+    const { topic, type, count = 4 } = req.validated;
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [{
