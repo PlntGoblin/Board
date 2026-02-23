@@ -1165,10 +1165,10 @@ CRITICAL: Always batch ALL tool calls in ONE response. Never split across multip
       }
 
       const pt = screenToBoard(e);
-      if (pt && (activeTool === 'pen' || activeTool === 'eraser' || activeTool === 'arrow' || activeTool === 'line' || activeTool === 'shape' || activeTool === 'frame')) {
+      if (pt && (activeTool === 'pen' || activeTool === 'eraser' || activeTool === 'arrow' || activeTool === 'line' || activeTool === 'shape' || activeTool === 'frame' || activeTool === 'emoji')) {
         if (activeTool === 'pen') { setIsDrawing(true); setCurrentPath([pt]); }
         else if (activeTool === 'eraser') { setIsErasing(true); eraseAtPoint(pt.x, pt.y); }
-        else if (activeTool === 'arrow' || activeTool === 'line' || activeTool === 'shape' || activeTool === 'frame') setLineStart(pt);
+        else if (activeTool === 'arrow' || activeTool === 'line' || activeTool === 'shape' || activeTool === 'frame' || activeTool === 'emoji') setLineStart(pt);
       }
     }
   };
@@ -1232,7 +1232,7 @@ CRITICAL: Always batch ALL tool calls in ONE response. Never split across multip
 
       if (isDrawing && activeTool === 'pen' && pt) { setCurrentPath(prev => [...prev, pt]); return; }
       if (isErasing && activeTool === 'eraser' && pt) { eraseAtPoint(pt.x, pt.y); return; }
-      if (lineStart && (activeTool === 'arrow' || activeTool === 'line' || activeTool === 'shape' || activeTool === 'frame') && pt) { setLineEnd(pt); return; }
+      if (lineStart && (activeTool === 'arrow' || activeTool === 'line' || activeTool === 'shape' || activeTool === 'frame' || activeTool === 'emoji') && pt) { setLineEnd(pt); return; }
 
       if (isRotating && selectedId && selectedIds.length <= 1) {
         const mouseX = (clientX - viewportOffset.x) / zoom;
@@ -1413,6 +1413,25 @@ CRITICAL: Always batch ALL tool calls in ONE response. Never split across multip
           setBoardObjects(prev => [...prev, n]);
           setSelectedIds([n.id]); setActiveTool('select');
         }
+        setLineStart(null); setLineEnd(null);
+      }
+    }
+    if (lineStart && activeTool === 'emoji') {
+      const pt = screenToBoard(e);
+      if (pt) {
+        const x = Math.min(lineStart.x, pt.x), y = Math.min(lineStart.y, pt.y);
+        const w = Math.abs(pt.x - lineStart.x), h = Math.abs(pt.y - lineStart.y);
+        const size = Math.max(w, h);
+        const n = {
+          id: nextId.current++, type: 'emoji',
+          x: size > 10 ? x : lineStart.x - 24,
+          y: size > 10 ? y : lineStart.y - 24,
+          width: size > 10 ? size : 48,
+          height: size > 10 ? size : 48,
+          emoji: selectedEmoji,
+        };
+        setBoardObjects(prev => [...prev, n]);
+        setSelectedIds([n.id]); setActiveTool('select');
         setLineStart(null); setLineEnd(null);
       }
     }
@@ -1655,7 +1674,7 @@ CRITICAL: Always batch ALL tool calls in ONE response. Never split across multip
   const handleCanvasClick = (e) => {
     setShowStickyMenu(false);
     setShowShapeMenu(false);
-    if (activeTool === 'select' || activeTool === 'hand' || activeTool === 'pen' || activeTool === 'eraser' || activeTool === 'arrow' || activeTool === 'line' || activeTool === 'shape' || activeTool === 'frame' || isPanning) return;
+    if (activeTool === 'select' || activeTool === 'hand' || activeTool === 'pen' || activeTool === 'eraser' || activeTool === 'arrow' || activeTool === 'line' || activeTool === 'shape' || activeTool === 'frame' || activeTool === 'emoji' || isPanning) return;
     setShowEmojiMenu(false);
     const pt = screenToBoard(e);
     if (!pt) return;
@@ -1669,6 +1688,7 @@ CRITICAL: Always batch ALL tool calls in ONE response. Never split across multip
       setBoardObjects(prev => [...prev, n]);
       setEditingId(n.id); setEditingText(''); setActiveTool('select');
     } else if (activeTool === 'comment') {
+      setSelectedId(null); setSelectedIds([]);
       const av = getUserAvatar(user);
       // Auto-attach comment to the nearest object under/near the click
       const ATTACH_PAD = 30;
@@ -1685,10 +1705,6 @@ CRITICAL: Always batch ALL tool calls in ONE response. Never split across multip
       };
       setBoardObjects(prev => [...prev, n]);
       setEditingId(n.id); setEditingText(''); setActiveTool('select');
-    } else if (activeTool === 'emoji') {
-      const n = { id: nextId.current++, type: 'emoji', x: pt.x - 24, y: pt.y - 24, width: 48, height: 48, emoji: selectedEmoji };
-      setBoardObjects(prev => [...prev, n]);
-      setActiveTool('select');
     }
   };
 
@@ -2114,6 +2130,25 @@ CRITICAL: Always batch ALL tool calls in ONE response. Never split across multip
                     return <rect x={1} y={1} width={pw-2} height={ph-2} rx={4} fill={fill} stroke={stroke} strokeWidth={sw} opacity={op} />;
                   })()}
                 </svg>
+              );
+            })()}
+
+            {/* Emoji tool: live preview while dragging */}
+            {lineStart && lineEnd && activeTool === 'emoji' && (() => {
+              const px = Math.min(lineStart.x, lineEnd.x), py = Math.min(lineStart.y, lineEnd.y);
+              const pw = Math.abs(lineEnd.x - lineStart.x), ph = Math.abs(lineEnd.y - lineStart.y);
+              const size = Math.max(pw, ph);
+              if (size < 5) return null;
+              return (
+                <div style={{
+                  position: 'absolute', left: px, top: py, width: size, height: size,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: `${size * 0.75}px`, lineHeight: 1,
+                  pointerEvents: 'none', zIndex: 201, opacity: 0.7,
+                  border: '2px dashed rgba(148,163,184,0.4)', borderRadius: '4px',
+                }}>
+                  {selectedEmoji}
+                </div>
               );
             })()}
 
