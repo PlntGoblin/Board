@@ -7,7 +7,7 @@ export default memo(function BoardObject({
   obj, isSelected, isEditing, editingText,
   setEditingId, setEditingText,
   handleMouseDown, setBoardObjects,
-  setIsResizing, setResizeHandle, setIsRotating, isMultiSelected, theme, user,
+  setIsResizing, setResizeHandle, setIsRotating, isContinuousDrag, isMultiSelected, theme, user,
   onContextMenu,
 }) {
   const updateProp = (id, prop, value) => {
@@ -69,8 +69,8 @@ export default memo(function BoardObject({
   }
 
   if (obj.type === 'path') return <PathDrawing obj={obj} isSelected={isSelected} handleMouseDown={handleMouseDown} updateProp={updateProp} isMultiSelected={isMultiSelected} onContextMenu={onContextMenu} />;
-  if (obj.type === 'line') return <LineDrawing obj={obj} isSelected={isSelected} handleMouseDown={handleMouseDown} updateProp={updateProp} isMultiSelected={isMultiSelected} onContextMenu={onContextMenu} setBoardObjects={setBoardObjects} />;
-  if (obj.type === 'arrow') return <ArrowDrawing obj={obj} isSelected={isSelected} handleMouseDown={handleMouseDown} updateProp={updateProp} isMultiSelected={isMultiSelected} onContextMenu={onContextMenu} setBoardObjects={setBoardObjects} />;
+  if (obj.type === 'line') return <LineDrawing obj={obj} isSelected={isSelected} handleMouseDown={handleMouseDown} updateProp={updateProp} isMultiSelected={isMultiSelected} onContextMenu={onContextMenu} setBoardObjects={setBoardObjects} isContinuousDrag={isContinuousDrag} />;
+  if (obj.type === 'arrow') return <ArrowDrawing obj={obj} isSelected={isSelected} handleMouseDown={handleMouseDown} updateProp={updateProp} isMultiSelected={isMultiSelected} onContextMenu={onContextMenu} setBoardObjects={setBoardObjects} isContinuousDrag={isContinuousDrag} />;
   if (obj.type === 'connector') return <ConnectorObject obj={obj} isSelected={isSelected} handleMouseDown={handleMouseDown} updateProp={updateProp} isMultiSelected={isMultiSelected} onContextMenu={onContextMenu} />;
 
   return null;
@@ -1021,12 +1021,13 @@ function screenToSVG(svg, clientX, clientY) {
 }
 
 // Endpoint handle — grab one end, the opposite stays anchored, this end follows the cursor
-function EndpointHandle({ x, y, obj, setBoardObjects, endpoint }) {
+function EndpointHandle({ x, y, obj, setBoardObjects, endpoint, isContinuousDrag }) {
   const startDrag = (e) => {
     e.stopPropagation();
     e.preventDefault();
     const svg = e.currentTarget.ownerSVGElement;
     if (!svg) return;
+    if (isContinuousDrag) isContinuousDrag.current = true;
     const objId = obj.id;
     const onMove = (ev) => {
       const pt = screenToSVG(svg, ev.clientX, ev.clientY);
@@ -1037,7 +1038,11 @@ function EndpointHandle({ x, y, obj, setBoardObjects, endpoint }) {
         return { ...o, x2: pt.x, y2: pt.y };
       }));
     };
-    const onUp = () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
+    const onUp = () => {
+      if (isContinuousDrag) isContinuousDrag.current = false;
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
   };
@@ -1049,12 +1054,13 @@ function EndpointHandle({ x, y, obj, setBoardObjects, endpoint }) {
 
 // Bend handle — dragging bends the line. The handle shows ON the curve (t=0.5),
 // and we reverse-compute the control point: CP = 2*curvePoint - 0.5*P0 - 0.5*P1
-function BendHandle({ x, y, obj, setBoardObjects }) {
+function BendHandle({ x, y, obj, setBoardObjects, isContinuousDrag }) {
   const startDrag = (e) => {
     e.stopPropagation();
     e.preventDefault();
     const svg = e.currentTarget.ownerSVGElement;
     if (!svg) return;
+    if (isContinuousDrag) isContinuousDrag.current = true;
     const objId = obj.id;
     const onMove = (ev) => {
       const pt = screenToSVG(svg, ev.clientX, ev.clientY);
@@ -1068,7 +1074,11 @@ function BendHandle({ x, y, obj, setBoardObjects }) {
         return { ...o, cx: cpx, cy: cpy };
       }));
     };
-    const onUp = () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
+    const onUp = () => {
+      if (isContinuousDrag) isContinuousDrag.current = false;
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
   };
@@ -1078,7 +1088,7 @@ function BendHandle({ x, y, obj, setBoardObjects }) {
   );
 }
 
-function LineDrawing({ obj, isSelected, handleMouseDown, updateProp, isMultiSelected, onContextMenu, setBoardObjects }) {
+function LineDrawing({ obj, isSelected, handleMouseDown, updateProp, isMultiSelected, onContextMenu, setBoardObjects, isContinuousDrag }) {
   const midX = (obj.x1 + obj.x2) / 2;
   const midY = (obj.y1 + obj.y2) / 2;
   const hasBend = obj.cx != null;
@@ -1098,9 +1108,9 @@ function LineDrawing({ obj, isSelected, handleMouseDown, updateProp, isMultiSele
           strokeLinecap="round" strokeDasharray={obj.strokeDasharray || 'none'} pointerEvents="none" opacity={obj.opacity ?? 1} />
         {isSelected && !isMultiSelected && (
           <>
-            <EndpointHandle x={obj.x1} y={obj.y1} obj={obj} setBoardObjects={setBoardObjects} endpoint="start" />
-            <EndpointHandle x={obj.x2} y={obj.y2} obj={obj} setBoardObjects={setBoardObjects} endpoint="end" />
-            <BendHandle x={handleX} y={handleY} obj={obj} setBoardObjects={setBoardObjects} />
+            <EndpointHandle x={obj.x1} y={obj.y1} obj={obj} setBoardObjects={setBoardObjects} endpoint="start" isContinuousDrag={isContinuousDrag} />
+            <EndpointHandle x={obj.x2} y={obj.y2} obj={obj} setBoardObjects={setBoardObjects} endpoint="end" isContinuousDrag={isContinuousDrag} />
+            <BendHandle x={handleX} y={handleY} obj={obj} setBoardObjects={setBoardObjects} isContinuousDrag={isContinuousDrag} />
           </>
         )}
       </svg>
@@ -1109,7 +1119,7 @@ function LineDrawing({ obj, isSelected, handleMouseDown, updateProp, isMultiSele
   );
 }
 
-function ArrowDrawing({ obj, isSelected, handleMouseDown, updateProp, isMultiSelected, onContextMenu, setBoardObjects }) {
+function ArrowDrawing({ obj, isSelected, handleMouseDown, updateProp, isMultiSelected, onContextMenu, setBoardObjects, isContinuousDrag }) {
   const midX = (obj.x1 + obj.x2) / 2;
   const midY = (obj.y1 + obj.y2) / 2;
   const hasBend = obj.cx != null;
@@ -1144,9 +1154,9 @@ function ArrowDrawing({ obj, isSelected, handleMouseDown, updateProp, isMultiSel
           markerEnd={`url(#${markerId})`} pointerEvents="none" opacity={obj.opacity ?? 1} />
         {isSelected && !isMultiSelected && (
           <>
-            <EndpointHandle x={obj.x1} y={obj.y1} obj={obj} setBoardObjects={setBoardObjects} endpoint="start" />
-            <EndpointHandle x={obj.x2} y={obj.y2} obj={obj} setBoardObjects={setBoardObjects} endpoint="end" />
-            <BendHandle x={handleX} y={handleY} obj={obj} setBoardObjects={setBoardObjects} />
+            <EndpointHandle x={obj.x1} y={obj.y1} obj={obj} setBoardObjects={setBoardObjects} endpoint="start" isContinuousDrag={isContinuousDrag} />
+            <EndpointHandle x={obj.x2} y={obj.y2} obj={obj} setBoardObjects={setBoardObjects} endpoint="end" isContinuousDrag={isContinuousDrag} />
+            <BendHandle x={handleX} y={handleY} obj={obj} setBoardObjects={setBoardObjects} isContinuousDrag={isContinuousDrag} />
           </>
         )}
       </svg>
@@ -1185,7 +1195,7 @@ function Comment({ obj, isSelected, isEditing, editingText, setEditingId, setEdi
     const newReply = {
       id: `r${Date.now()}`,
       text,
-      author: user?.email || 'Anonymous',
+      author: user?.email?.split('@')[0] || 'Anonymous',
       avatar_emoji: avatarEmoji,
       avatar_color: avatarColor,
       timestamp: Date.now(),
@@ -1307,7 +1317,7 @@ function Comment({ obj, isSelected, isEditing, editingText, setEditingId, setEdi
               {obj.avatar_emoji || authorInitial}
             </div>
             <span style={{ fontWeight: '600', color: '#c4d0ff' }}>
-              {obj.author || 'Anonymous'}
+              {obj.author?.split('@')[0] || 'Anonymous'}
             </span>
           </div>
 
@@ -1368,7 +1378,7 @@ function Comment({ obj, isSelected, isEditing, editingText, setEditingId, setEdi
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <span style={{ fontSize: '11px', fontWeight: '600', color: '#a0b4e0' }}>
-                        {r.author || 'Anonymous'}
+                        {r.author?.split('@')[0] || 'Anonymous'}
                       </span>
                       <div style={{
                         fontSize: '12px', color: '#c8d4e8', lineHeight: '1.35',

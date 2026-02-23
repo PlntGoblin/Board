@@ -5,7 +5,6 @@ const PRESENCE_MESSAGES = [
   "More brains in the galaxy 🧠",
   "Welcome to the mission 👩‍🚀👨‍🚀",
   "Ideas love company 💡",
-  "Collaboration level: increasing",
   "The universe just got smarter 😉",
 ];
 
@@ -82,7 +81,7 @@ export default function PresenceBar({ users, currentUser, theme }) {
       >
         {visible.map((u, i) => {
           const color = u.avatar_color || getColor(u.user_id);
-          const name = u.display_name || u.email || 'User';
+          const name = u.display_name || u.email?.split('@')[0] || 'User';
           const emoji = u.avatar_emoji;
 
           return (
@@ -158,7 +157,7 @@ export default function PresenceBar({ users, currentUser, theme }) {
           {uniqueUsers.map((u) => {
             const isCurrentUser = u.user_id === currentUser?.id;
             const color = u.avatar_color || getColor(u.user_id);
-            const name = u.display_name || u.email || 'User';
+            const name = u.display_name || u.email?.split('@')[0] || 'User';
             const emoji = u.avatar_emoji;
 
             return (

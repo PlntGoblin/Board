@@ -103,6 +103,7 @@ const AIBoard = () => {
   const [actionHistory, setActionHistory] = useState([]);
   const prevBoardRef = useRef([]);
   const isUndoRedo = useRef(false);
+  const isContinuousDrag = useRef(false);
 
   // --- UI state ---
   const [showZoomMenu, setShowZoomMenu] = useState(false);
@@ -218,6 +219,9 @@ const AIBoard = () => {
   useEffect(() => {
     if (!boardLoaded) return;
     if (isUndoRedo.current) { isUndoRedo.current = false; prevBoardRef.current = boardObjects; return; }
+    // During continuous drags (object move, resize, rotate, bend), skip intermediate history entries.
+    // prevBoardRef stays at the pre-drag snapshot so the final mouseUp diff captures the whole action.
+    if (isContinuousDrag.current) return;
 
     const prev = prevBoardRef.current;
     const prevMap = {};
@@ -473,22 +477,29 @@ const AIBoard = () => {
         return { success: true, objectId: n.id, type: 'connector' };
       }
       case "moveObject": {
+        const found = boardObjects.filter(obj => toolInput.objectIds.includes(obj.id)).length;
+        if (found === 0) return { success: false, error: 'None of the specified object IDs exist on the board.' };
         setBoardObjects(prev => prev.map(obj => toolInput.objectIds.includes(obj.id)
           ? { ...obj, x: toolInput.relative ? obj.x + toolInput.x : toolInput.x, y: toolInput.relative ? obj.y + toolInput.y : toolInput.y }
           : obj
         ));
-        return { success: true, movedCount: toolInput.objectIds.length };
+        return { success: true, movedCount: found };
       }
       case "changeColor": {
+        const found = boardObjects.filter(obj => toolInput.objectIds.includes(obj.id)).length;
+        if (found === 0) return { success: false, error: 'None of the specified object IDs exist on the board.' };
         setBoardObjects(prev => prev.map(obj => toolInput.objectIds.includes(obj.id) ? { ...obj, color: toolInput.color } : obj));
-        return { success: true, updatedCount: toolInput.objectIds.length };
+        return { success: true, updatedCount: found };
       }
       case "updateText": {
+        const exists = boardObjects.some(obj => obj.id === toolInput.objectId);
+        if (!exists) return { success: false, error: `Object with id ${toolInput.objectId} does not exist on the board.` };
         setBoardObjects(prev => prev.map(obj => obj.id === toolInput.objectId ? { ...obj, text: toolInput.newText } : obj));
         return { success: true };
       }
       case "arrangeGrid": {
         const count = boardObjects.filter(obj => toolInput.objectIds.includes(obj.id)).length;
+        if (count === 0) return { success: false, error: 'None of the specified object IDs exist on the board.' };
         setBoardObjects(prev => prev.map(obj => {
           const idx = toolInput.objectIds.indexOf(obj.id);
           if (idx === -1) return obj;
@@ -497,8 +508,10 @@ const AIBoard = () => {
         return { success: true, arrangedCount: count };
       }
       case "resizeObject": {
+        const found = boardObjects.filter(obj => toolInput.objectIds.includes(obj.id)).length;
+        if (found === 0) return { success: false, error: 'None of the specified object IDs exist on the board.' };
         setBoardObjects(prev => prev.map(obj => toolInput.objectIds.includes(obj.id) ? { ...obj, width: toolInput.width, height: toolInput.height } : obj));
-        return { success: true, resizedCount: toolInput.objectIds.length };
+        return { success: true, resizedCount: found };
       }
       case "createDrawing": {
         if (!toolInput.points?.length || toolInput.points.length < 2) return { success: false, error: 'Need at least 2 points' };
@@ -889,6 +902,8 @@ Rules:
 - Prefer modifying existing objects (move, resize, recolor) over deleting and recreating them.
 - Never move objects the user didn't ask you to move.
 - Understand spatial relationships: an object is "inside" a frame if its x,y position falls within the frame's x,y,width,height bounds.
+- When a tool call returns { success: false }, do NOT pretend it worked. Tell the user honestly what went wrong (e.g. "No sticky notes on the board — want me to create one?"). Offer to create the missing object instead.
+- Before modifying objects, check the board state above. If the board is empty or the requested object type doesn't exist, skip the tool call entirely and offer to create one.
 - When a command is ambiguous, ask the user to clarify before acting.
 - When resizing a frame to fit contents: find objects inside/near the frame, calculate their bounding box (min x, min y, max x+width, max y+height), add ~20px padding, then use resizeObject and optionally moveObject on the FRAME only — never move the contents.
 - When arranging in grids, account for object sizes (sticky notes are 200x200, shapes vary).
@@ -1117,6 +1132,7 @@ CRITICAL: Always batch ALL tool calls in ONE response. Never split across multip
       }
       if (selectedIds.includes(objId) && selectedIds.length > 1) {
         setDraggedId(objId);
+        isContinuousDrag.current = true;
         const obj = boardObjects.find(o => o.id === objId);
         if (obj) {
           dragStart.current = {
@@ -1141,6 +1157,7 @@ CRITICAL: Always batch ALL tool calls in ONE response. Never split across multip
         return;
       }
       setDraggedId(objId);
+      isContinuousDrag.current = true;
       setSelectedId(objId);
       setSelectedIds([objId]);
       const obj = boardObjects.find(o => o.id === objId);
@@ -1485,6 +1502,7 @@ CRITICAL: Always batch ALL tool calls in ONE response. Never split across multip
       setHoveredObjId(null);
     }
     setDraggedId(null); setIsPanning(false); setIsResizing(false); setResizeHandle(null); setIsRotating(false); rotationStartRef.current = null; frameChildIdsRef.current = new Set();
+    isContinuousDrag.current = false;
   };
 
   // --- Wheel zoom ---
@@ -1508,13 +1526,14 @@ CRITICAL: Always batch ALL tool calls in ONE response. Never split across multip
     }
   }, []);
 
-  // --- Delete (also removes connectors attached to deleted objects) ---
+  // --- Delete (also removes connectors and attached comments of deleted objects) ---
   const handleDelete = useCallback(() => {
     if (selectedIds.length > 0) {
       const ids = new Set(selectedIds);
       setBoardObjects(prev => prev.filter(obj => {
         if (ids.has(obj.id)) return false;
         if (obj.type === 'connector' && (ids.has(obj.fromId) || ids.has(obj.toId))) return false;
+        if (obj.type === 'comment' && obj.attachedTo && ids.has(obj.attachedTo)) return false;
         return true;
       }));
       setSelectedId(null); setSelectedIds([]);
@@ -1522,6 +1541,7 @@ CRITICAL: Always batch ALL tool calls in ONE response. Never split across multip
       setBoardObjects(prev => prev.filter(obj => {
         if (obj.id === selectedId) return false;
         if (obj.type === 'connector' && (obj.fromId === selectedId || obj.toId === selectedId)) return false;
+        if (obj.type === 'comment' && obj.attachedTo === selectedId) return false;
         return true;
       }));
       setSelectedId(null);
@@ -1723,7 +1743,7 @@ CRITICAL: Always batch ALL tool calls in ONE response. Never split across multip
       const pinX = pt.x - 18, pinY = pt.y - 44;
       const n = {
         id: nextId.current++, type: 'comment', x: pinX, y: pinY, text: '',
-        author: user?.email || 'Anonymous', avatar_emoji: av.emoji, avatar_color: av.color, timestamp: Date.now(),
+        author: user?.email?.split('@')[0] || 'Anonymous', avatar_emoji: av.emoji, avatar_color: av.color, timestamp: Date.now(),
         ...(target ? { attachedTo: target.id, attachOffsetX: pinX - target.x, attachOffsetY: pinY - target.y } : {}),
       };
       setBoardObjects(prev => [...prev, n]);
@@ -2055,9 +2075,10 @@ CRITICAL: Always batch ALL tool calls in ONE response. Never split across multip
                 setEditingText={setEditingText}
                 handleMouseDown={handleMouseDown}
                 setBoardObjects={setBoardObjects}
-                setIsResizing={setIsResizing}
+                setIsResizing={(v) => { setIsResizing(v); if (v) isContinuousDrag.current = true; }}
                 setResizeHandle={setResizeHandle}
-                setIsRotating={setIsRotating}
+                setIsRotating={(v) => { setIsRotating(v); if (v) isContinuousDrag.current = true; }}
+                isContinuousDrag={isContinuousDrag}
                 isMultiSelected={selectedIds.length > 1}
                 theme={theme}
                 user={user}
