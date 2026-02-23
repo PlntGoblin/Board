@@ -435,7 +435,7 @@ const AIBoard = () => {
         const n = { id: nextId.current++, type: 'stickyNote', x: nx, y: ny, width: sw, height: sh, color: toolInput.color, text: toolInput.text };
         setBoardObjects(prev => [...prev, n]);
         recentlyCreatedObjects.current.push(n);
-        return { success: true, objectId: n.id };
+        return { success: true, objectId: n.id, actualX: nx, actualY: ny, actualW: sw, actualH: sh };
       }
       case "createShape": {
         const n = { id: nextId.current++, type: 'shape', shapeType: toolInput.type, x: toolInput.x, y: toolInput.y, width: toolInput.width, height: toolInput.height, color: toolInput.color, ...(toolInput.text ? { text: toolInput.text } : {}) };
@@ -988,17 +988,16 @@ CRITICAL: Always batch ALL tool calls in ONE response. Never split across multip
             const toolInput = JSON.parse(toolCall.function.arguments);
             const result = await executeToolCall(toolName, toolInput);
 
-            // Collect bounds synchronously from tool inputs — no state read needed
+            // Collect bounds synchronously — use actual positions when available (collision detection may shift objects)
             if (CREATION_TOOLS_AI.has(toolName) && result.success) {
               if (toolName === 'createTemplate' || toolName === 'createMultipleObjects') {
-                // These return their own bounds
                 createdBounds.push({ x: result.x, y: result.y, w: result.w, h: result.h });
               } else {
                 createdBounds.push({
-                  x: toolInput.x ?? 0,
-                  y: toolInput.y ?? 0,
-                  w: toolInput.width || 200,
-                  h: toolInput.height || 200,
+                  x: result.actualX ?? toolInput.x ?? 0,
+                  y: result.actualY ?? toolInput.y ?? 0,
+                  w: result.actualW ?? toolInput.width ?? 200,
+                  h: result.actualH ?? toolInput.height ?? 200,
                 });
               }
             }
